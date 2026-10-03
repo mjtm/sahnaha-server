@@ -1,6 +1,13 @@
+import cors from "cors";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+const corsMiddleware = cors({
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"],
+});
 
 const SYSTEM_INSTRUCTIONS = `
 أنت محرك تصحيح لغوي وإملائي احترافي للنصوص العربية والإنجليزية.
@@ -37,37 +44,42 @@ const SYSTEM_INSTRUCTIONS = `
 `;
 
 export default async function handler(req, res) {
-  // فحص السيرفر عند فتح الرابط بالمتصفح
-  if (req.method === "GET") {
-    return res.status(200).send("Sahhaha Gemini server is running");
-  }
+  return corsMiddleware(req, res, async () => {
+    try {
+      if (req.method === "OPTIONS") {
+        return res.status(204).end();
+      }
 
-  try {
-    if (req.method !== "POST") {
-      return res.status(405).json({
-        error: "Method not allowed",
+      if (req.method === "GET") {
+        return res.status(200).send("Sahhaha Gemini server is running");
+      }
+
+      if (req.method !== "POST") {
+        return res.status(405).json({
+          error: "Method not allowed",
+        });
+      }
+
+      const { text, language = "تلقائي", dialect = "iraqi" } =
+        req.body ?? {};
+
+      if (!text || typeof text !== "string") {
+        return res.status(400).json({
+          error: "النص فارغ",
+        });
+      }
+
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({
+          error: "GEMINI_API_KEY غير موجود",
+        });
+      }
+
+      const model = genAI.getGenerativeModel({
+        model: "gemini-3.5-flash-lite",
       });
-    }
 
-    const { text, language = "تلقائي", dialect = "iraqi" } = req.body ?? {};
-
-    if (!text || typeof text !== "string") {
-      return res.status(400).json({
-        error: "النص فارغ",
-      });
-    }
-
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({
-        error: "GEMINI_API_KEY غير موجود",
-      });
-    }
-
-    const model = genAI.getGenerativeModel({
-      model: "gemini-3.5-flash-lite",
-    });
-
-    const prompt = `
+      const prompt = `
 ${SYSTEM_INSTRUCTIONS}
 
 اللغة: ${language}
@@ -78,28 +90,31 @@ ${SYSTEM_INSTRUCTIONS}
 ${text}
 `;
 
-    const result = await model.generateContent(prompt);
+      const result = await model.generateContent(prompt);
 
-    const correctedText = result.response.text()?.trim();
+      const correctedText = result.response.text()?.trim();
 
-    if (!correctedText) {
+      if (!correctedText) {
+        return res.status(500).json({
+          error: "لم يرجع Gemini نصًا مصححًا",
+        });
+      }
+
+      res.setHeader(
+        "Content-Type",
+        "application/json; charset=utf-8"
+      );
+
+      return res.status(200).json({
+        corrected_text: correctedText,
+      });
+    } catch (error) {
+      console.error("GEMINI ERROR:", error);
+
       return res.status(500).json({
-        error: "لم يرجع Gemini نصًا مصححًا",
+        error: "حدث خطأ أثناء التصحيح",
+        details: error.message,
       });
     }
-
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-
-return res.status(200).json({
-  corrected_text: correctedText,
-});
-
-  } catch (error) {
-    console.error("GEMINI ERROR:", error);
-
-    return res.status(500).json({
-      error: "حدث خطأ أثناء التصحيح",
-      details: error.message,
-    });
-  }
+  });
 }
