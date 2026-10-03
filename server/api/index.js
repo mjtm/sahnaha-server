@@ -37,6 +37,11 @@ const SYSTEM_INSTRUCTIONS = `
 `;
 
 export default async function handler(req, res) {
+  // فحص السيرفر عند فتح الرابط بالمتصفح
+  if (req.method === "GET") {
+    return res.status(200).send("Sahhaha Gemini server is running");
+  }
+
   try {
     if (req.method !== "POST") {
       return res.status(405).json({
@@ -75,8 +80,7 @@ ${text}
 
     const result = await model.generateContent(prompt);
 
-    const correctedText =
-      result.response.text()?.trim();
+    const correctedText = result.response.text()?.trim();
 
     if (!correctedText) {
       return res.status(500).json({
