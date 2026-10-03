@@ -88,9 +88,11 @@ ${text}
       });
     }
 
-    return res.status(200).json({
-      corrected_text: correctedText,
-    });
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+
+return res.status(200).json({
+  corrected_text: correctedText,
+});
 
   } catch (error) {
     console.error("GEMINI ERROR:", error);
