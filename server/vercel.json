@@ -13,7 +13,7 @@
   "routes": [
     {
       "src": "/update.json",
-      "dest": "/api/auth.js"
+      "dest": "/update.json"
     },
     {
       "src": "/api/auth/(.*)",
