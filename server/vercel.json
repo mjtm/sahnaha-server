@@ -1,13 +1,3 @@
-{
-  "version": 2,
-  "routes": [
-    {
-      "src": "/auth/(.*)",
-      "dest": "/api/auth.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/api/index.js"
-    }
-  ]
+﻿{
+  "version": 2
 }
