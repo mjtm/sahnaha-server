@@ -668,7 +668,7 @@ async function askGemini(contents) {
   );
 }
 
-app.post('/chat', async (req, res) => {
+app.post(['/chat', '/api/chat'], async (req, res) => {
   try {
     const {
       message,
