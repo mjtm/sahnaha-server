@@ -231,6 +231,16 @@ function validateRegisterInput({ fullName, email, password, stage, grade }) {
 }
 
 // ╪º┘ä╪╡┘ü╪¡╪⌐ ╪º┘ä╪▒╪ª┘è╪│┘è╪⌐
+
+app.get('/update.json', (req, res) => {
+  res.json({
+    latestVersion: '1.0.0+1',
+    downloadUrl: '',
+    title: 'تحديث جديد متوفر',
+    message: 'أكو تحديث جديد للتطبيق، اضغط تحديث الآن للاستفادة من الميزات الجديدة.'
+  });
+});
+
 app.get('/', (req, res) => {
   res.json({
     success: true,
@@ -754,5 +764,6 @@ ${
 });
 
 module.exports = app;
+
 
 
