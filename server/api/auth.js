@@ -8,12 +8,6 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
-app.use((req, res, next) => {
-  if (req.path.startsWith('/api/auth/')) {
-    req.url = req.url.replace('/api/auth/', '/auth/');
-  }
-  next();
-});
 
 const apiKey = process.env.GEMINI_API_KEY;
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -247,7 +241,7 @@ app.get('/', (req, res) => {
 
 // ===================== ╪º┘ä╪¡╪│╪º╪¿╪º╪¬ =====================
 
-app.post('/auth/register', async (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   try {
     const { fullName, email, password, stage, grade } = req.body || {};
     const validationError = validateRegisterInput({
@@ -308,7 +302,7 @@ app.post('/auth/register', async (req, res) => {
   }
 });
 
-app.post('/auth/login', async (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body || {};
     const normalizedEmail = String(email || '').trim().toLowerCase();
@@ -366,7 +360,7 @@ app.post('/auth/login', async (req, res) => {
 
 
 // ╪¬╪¡╪»┘è╪½ ╪¿┘è╪º┘å╪º╪¬ ╪º┘ä╪¡╪│╪º╪¿: ╪º┘ä╪º╪│┘à + ╪º┘ä╪Ñ┘è┘à┘è┘ä + ╪º┘ä╪▒┘à╪▓
-app.post('/auth/update-profile', async (req, res) => {
+app.post('/api/auth/update-profile', async (req, res) => {
   try {
     const auth = verifyAuthToken(getAuthToken(req));
 
@@ -531,7 +525,7 @@ app.post('/auth/update-profile', async (req, res) => {
   }
 });
 
-app.post('/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const normalizedEmail = String(req.body?.email || '').trim().toLowerCase();
 
@@ -583,7 +577,7 @@ app.post('/auth/forgot-password', async (req, res) => {
   }
 });
 
-app.post('/auth/reset-password', async (req, res) => {
+app.post('/api/auth/reset-password', async (req, res) => {
   try {
     const normalizedEmail = String(req.body?.email || '').trim().toLowerCase();
     const code = String(req.body?.code || '').trim();
