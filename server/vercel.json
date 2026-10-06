@@ -10,17 +10,22 @@
       "use": "@vercel/node"
     }
   ],
-"routes": [
-  {
-    "src": "/api/auth/(.*)",
-    "dest": "/api/auth.js"
-  },
-  {
-    "src": "/api/chat",
-    "dest": "/api/auth.js"
-  },
-  {
-    "src": "/api/(.*)",
-    "dest": "/api/index.js"
-  }
-]}
+  "routes": [
+    {
+      "src": "/update.json",
+      "dest": "/api/auth.js"
+    },
+    {
+      "src": "/api/auth/(.*)",
+      "dest": "/api/auth.js"
+    },
+    {
+      "src": "/api/chat",
+      "dest": "/api/auth.js"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/index.js"
+    }
+  ]
+}
