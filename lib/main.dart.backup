@@ -1,0 +1,5267 @@
+﻿import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:printing/printing.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'subjects_data.dart';
+import 'books_data.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const IraqiStudentApp());
+}
+
+class IraqiStudentApp extends StatelessWidget {
+  const IraqiStudentApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return ValueListenableBuilder<double>(
+      valueListenable: uiScaleNotifier,
+      builder: (context, scale, child) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Ù…Ø³Ø§Ø¹Ø¯ Ø§Ù„Ø·Ø§Ù„Ø¨ Ø§Ù„Ø¹Ø±Ø§Ù‚ÙŠ',
+          theme: ThemeData(
+            useMaterial3: true,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF2563EB),
+            ),
+            fontFamily: 'Arial',
+          ),
+          builder: (context, child) {
+            final media = MediaQuery.of(context);
+            return MediaQuery(
+              data: media.copyWith(
+                textScaler: TextScaler.linear(scale),
+              ),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
+          home: const AppStart(),
+        );
+      },
+    );
+  }
+}
+
+// ============================================================
+// Ø¨Ø¯Ø§ÙŠØ© Ø§Ù„ØªØ·Ø¨ÙŠÙ‚
+// ============================================================
+
+class AppStart extends StatefulWidget {
+  const AppStart({super.key});
+
+  @override
+  State<AppStart> createState() => _AppStartState();
+}
+
+class _AppStartState extends State<AppStart> {
+  bool loading = true;
+  bool loggedIn = false;
+
+  static const String currentAppVersion = '1.0.0+1';
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLogin();
+  }
+
+  Future<void> _checkLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token');
+    final savedScale = prefs.getDouble('ui_scale') ?? 1.0;
+
+    uiScaleNotifier.value = savedScale;
+
+    if (!mounted) return;
+
+    setState(() {
+      loggedIn = token != null && token.isNotEmpty;
+      loading = false;
+    });
+
+    // ÙØ­Øµ ÙˆØ¬ÙˆØ¯ ØªØ­Ø¯ÙŠØ« Ø¨Ø¹Ø¯ ØªØ´ØºÙŠÙ„ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚
+    _checkForUpdate();
+  }
+
+  Future<void> _checkForUpdate() async {
+    try {
+      final response = await http
+          .get(
+        Uri.parse(
+          'https://sahnaha-server.vercel.app/api/update',
+        ),
+      )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) return;
+
+      final data = jsonDecode(response.body);
+
+      final latestVersion =
+          data['latestVersion']?.toString() ?? '';
+
+      final downloadUrl =
+          data['downloadUrl']?.toString() ?? '';
+
+      if (!mounted ||
+          latestVersion.isEmpty ||
+          downloadUrl.isEmpty ||
+          latestVersion == currentAppVersion) {
+        return;
+      }
+
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return AlertDialog(
+            title: Text(
+              data['title']?.toString() ??
+                  'ØªØ­Ø¯ÙŠØ« Ø¬Ø¯ÙŠØ¯ Ù…ØªÙˆÙØ±',
+            ),
+            content: Text(
+              data['message']?.toString() ??
+                  'Ø£ÙƒÙˆ ØªØ­Ø¯ÙŠØ« Ø¬Ø¯ÙŠØ¯ Ù„Ù„ØªØ·Ø¨ÙŠÙ‚.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('Ù„Ø§Ø­Ù‚Ù‹Ø§'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final uri = Uri.parse(downloadUrl);
+
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(
+                      uri,
+                      mode: LaunchMode.externalApplication,
+                    );
+                  }
+                },
+                child: const Text('ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø¢Ù†'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (_) {
+      // Ø¥Ø°Ø§ Ù…Ø§ÙƒÙˆ Ø¥Ù†ØªØ±Ù†ØªØŒ Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ ÙŠØ´ØªØºÙ„ Ø·Ø¨ÙŠØ¹ÙŠ.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    return loggedIn
+        ? const HomePage()
+        : const LoginPage();
+  }
+}
+// Ø¹Ù†ÙˆØ§Ù† Ø§Ù„Ø³ÙŠØ±ÙØ± Ù„Ù„Ø­Ø³Ø§Ø¨Ø§Øª.
+// Ù†ÙØ³ Ø¯ÙˆÙ…ÙŠÙ† Vercel Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… Ù„Ù„Ù…Ø³Ø§Ø¹Ø¯ Ø§Ù„Ø°ÙƒÙŠ.
+const String authBaseUrl = 'https://sahnaha-server.vercel.app/api';
+
+// Ø­Ø¬Ù… ÙˆØ§Ø¬Ù‡Ø© Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ (Ù…Ø­ÙÙˆØ¸ Ù…Ø­Ù„ÙŠØ§Ù‹ ÙˆÙŠÙØ·Ø¨Ù‘Ù‚ Ø¹Ù„Ù‰ ÙƒÙ„ ØµÙØ­Ø§Øª Ø§Ù„ØªØ·Ø¨ÙŠÙ‚).
+final ValueNotifier<double> uiScaleNotifier = ValueNotifier<double>(1.0);
+
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  bool loading = false;
+  bool obscure = true;
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login() async {
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _show('Ø§ÙƒØªØ¨ Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„ ÙˆØ§Ù„Ø±Ù…Ø² Ø£ÙˆÙ„Ø§Ù‹');
+      return;
+    }
+
+    setState(() => loading = true);
+
+    try {
+      final response = await http.post(
+        Uri.parse('$authBaseUrl/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'password': password,
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        final prefs = await SharedPreferences.getInstance();
+
+        await prefs.setString('auth_token', data['token'].toString());
+        await prefs.setString('student_name', data['user']['fullName'].toString());
+        await prefs.setString('student_email', data['user']['email'].toString());
+        await prefs.setString('student_stage', data['user']['stage'].toString());
+        await prefs.setString('student_grade', data['user']['grade'].toString());
+
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomePage()),
+        );
+      } else {
+        _show(data['error']?.toString() ?? 'Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø¯Ø®ÙˆÙ„ ØºÙŠØ± ØµØ­ÙŠØ­Ø©');
+      }
+    } catch (e) {
+      debugPrint('Login error: $e');
+      _show('Ø®Ø·Ø£ Ø§Ù„Ø¯Ø®ÙˆÙ„: $e');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  void _show(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(22),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Column(
+                  children: [
+                    const CircleAvatar(
+                      radius: 48,
+                      backgroundColor: Color(0xFFEFF6FF),
+                      child: Icon(
+                        Icons.school_rounded,
+                        size: 52,
+                        color: Color(0xFF2563EB),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Ø·Ø§Ù„Ø¨Ù†Ø§',
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Ø³Ø¬Ù„ Ø¯Ø®ÙˆÙ„Ùƒ ÙˆØ§Ø¨Ø¯Ø£ Ø±Ø­Ù„ØªÙƒ Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠØ© ðŸ“š',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 30),
+                    TextField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        labelText: 'Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„',
+                        prefixIcon: const Icon(Icons.email_outlined),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    TextField(
+                      controller: passwordController,
+                      obscureText: obscure,
+                      decoration: InputDecoration(
+                        labelText: 'Ø§Ù„Ø±Ù…Ø² / ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ±',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          onPressed: () => setState(() => obscure = !obscure),
+                          icon: Icon(
+                            obscure ? Icons.visibility : Icons.visibility_off,
+                          ),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      onSubmitted: (_) => _login(),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: loading
+                            ? null
+                            : () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ForgotPasswordPage(),
+                            ),
+                          );
+                        },
+                        child: const Text('Ù†Ø³ÙŠØª Ø§Ù„Ø±Ù…Ø²ØŸ'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: FilledButton(
+                        onPressed: loading ? null : _login,
+                        child: loading
+                            ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                            : const Text(
+                          'ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: OutlinedButton(
+                        onPressed: loading
+                            ? null
+                            : () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const RegisterPage(),
+                            ),
+                          );
+                        },
+                        child: const Text('Ø¥Ù†Ø´Ø§Ø¡ Ø­Ø³Ø§Ø¨ Ø¬Ø¯ÙŠØ¯'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class RegisterPage extends StatefulWidget {
+  const RegisterPage({super.key});
+
+  @override
+  State<RegisterPage> createState() => _RegisterPageState();
+}
+
+class _RegisterPageState extends State<RegisterPage> {
+  final nameController = TextEditingController();
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final confirmController = TextEditingController();
+
+  String? stage;
+  String? grade;
+  bool loading = false;
+  bool obscure = true;
+
+  final primaryGrades = const [
+    'Ø§Ù„Ø£ÙˆÙ„ Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠ',
+    'Ø§Ù„Ø«Ø§Ù†ÙŠ Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠ',
+    'Ø§Ù„Ø«Ø§Ù„Ø« Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠ',
+    'Ø§Ù„Ø±Ø§Ø¨Ø¹ Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠ',
+    'Ø§Ù„Ø®Ø§Ù…Ø³ Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠ',
+    'Ø§Ù„Ø³Ø§Ø¯Ø³ Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠ',
+  ];
+
+  final middleGrades = const [
+    'Ø§Ù„Ø£ÙˆÙ„ Ø§Ù„Ù…ØªÙˆØ³Ø·',
+    'Ø§Ù„Ø«Ø§Ù†ÙŠ Ø§Ù„Ù…ØªÙˆØ³Ø·',
+    'Ø§Ù„Ø«Ø§Ù„Ø« Ø§Ù„Ù…ØªÙˆØ³Ø·',
+  ];
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    emailController.dispose();
+    passwordController.dispose();
+    confirmController.dispose();
+    super.dispose();
+  }
+
+  List<String> get grades {
+    if (stage == 'primary') return primaryGrades;
+    if (stage == 'middle') return middleGrades;
+    return const [];
+  }
+
+  void _show(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text)),
+    );
+  }
+
+  Future<void> _register() async {
+    final fullName = nameController.text.trim();
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+
+    if (fullName.split(RegExp(r'\s+')).length < 3) {
+      _show('Ø§ÙƒØªØ¨ Ø§Ù„Ø§Ø³Ù… Ø§Ù„Ø«Ù„Ø§Ø«ÙŠ');
+      return;
+    }
+    if (!email.contains('@') || !email.contains('.')) {
+      _show('Ø§ÙƒØªØ¨ Ø¥ÙŠÙ…ÙŠÙ„ ØµØ­ÙŠØ­');
+      return;
+    }
+    if (password.length < 6) {
+      _show('Ø§Ù„Ø±Ù…Ø² Ù„Ø§Ø²Ù… ÙŠÙƒÙˆÙ† 6 Ø£Ø­Ø±Ù Ø£Ùˆ Ø£Ø±Ù‚Ø§Ù… Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„');
+      return;
+    }
+    if (password != confirmController.text) {
+      _show('Ø§Ù„Ø±Ù…Ø²Ø§Ù† ØºÙŠØ± Ù…ØªØ·Ø§Ø¨Ù‚ÙŠÙ†');
+      return;
+    }
+    if (stage == null || grade == null) {
+      _show('Ø§Ø®ØªØ§Ø± Ø§Ù„Ù…Ø±Ø­Ù„Ø© ÙˆØ§Ù„ØµÙ');
+      return;
+    }
+
+    setState(() => loading = true);
+
+    try {
+      final response = await http.post(
+        Uri.parse('$authBaseUrl/auth/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'fullName': fullName,
+          'email': email,
+          'password': password,
+          'stage': stage,
+          'grade': grade,
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 201 && data['success'] == true) {
+        final prefs = await SharedPreferences.getInstance();
+
+        await prefs.setString('auth_token', data['token'].toString());
+        await prefs.setString('student_name', data['user']['fullName'].toString());
+        await prefs.setString('student_email', data['user']['email'].toString());
+        await prefs.setString('student_stage', data['user']['stage'].toString());
+        await prefs.setString('student_grade', data['user']['grade'].toString());
+
+        if (!mounted) return;
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const HomePage()),
+              (_) => false,
+        );
+      } else {
+        _show(data['error']?.toString() ?? 'ØªØ¹Ø°Ø± Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„Ø­Ø³Ø§Ø¨');
+      }
+    } catch (e) {
+      debugPrint('Register error: $e');
+      _show('Ø®Ø·Ø£ Ø§Ù„ØªØ³Ø¬ÙŠÙ„: $e');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Ø¥Ù†Ø´Ø§Ø¡ Ø­Ø³Ø§Ø¨')),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 620),
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.person_add_alt_1_rounded,
+                    size: 65,
+                    color: Color(0xFF2563EB),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Ø­Ø³Ø§Ø¨ Ø§Ù„Ø·Ø§Ù„Ø¨',
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  TextField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: 'Ø§Ù„Ø§Ø³Ù… Ø§Ù„Ø«Ù„Ø§Ø«ÙŠ',
+                      hintText: 'Ù…Ø«Ù„Ø§Ù‹: Ø¹Ù„ÙŠ Ù†Ø¬Ù… Ù…Ø­Ù…Ø¯',
+                      prefixIcon: const Icon(Icons.person_outline),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: InputDecoration(
+                      labelText: 'Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„',
+                      prefixIcon: const Icon(Icons.email_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: obscure,
+                    decoration: InputDecoration(
+                      labelText: 'Ø§Ù„Ø±Ù…Ø² / ÙƒÙ„Ù…Ø© Ø§Ù„Ù…Ø±ÙˆØ±',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        onPressed: () => setState(() => obscure = !obscure),
+                        icon: Icon(
+                          obscure ? Icons.visibility : Icons.visibility_off,
+                        ),
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: confirmController,
+                    obscureText: obscure,
+                    decoration: InputDecoration(
+                      labelText: 'ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ø±Ù…Ø²',
+                      prefixIcon: const Icon(Icons.lock_reset_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    initialValue: stage,
+                    decoration: InputDecoration(
+                      labelText: 'Ø§Ù„Ù…Ø±Ø­Ù„Ø© Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠØ©',
+                      prefixIcon: const Icon(Icons.school_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'primary',
+                        child: Text('Ø§Ù„Ù…Ø±Ø­Ù„Ø© Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠØ©'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'middle',
+                        child: Text('Ø§Ù„Ù…Ø±Ø­Ù„Ø© Ø§Ù„Ù…ØªÙˆØ³Ø·Ø©'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        stage = value;
+                        grade = null;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    initialValue: grade,
+                    decoration: InputDecoration(
+                      labelText: 'Ø§Ù„ØµÙ',
+                      prefixIcon: const Icon(Icons.menu_book_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    items: grades
+                        .map(
+                          (item) => DropdownMenuItem(
+                        value: item,
+                        child: Text(item),
+                      ),
+                    )
+                        .toList(),
+                    onChanged: grades.isEmpty
+                        ? null
+                        : (value) => setState(() => grade = value),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: FilledButton(
+                      onPressed: loading ? null : _register,
+                      child: loading
+                          ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                          : const Text(
+                        'Ø¥Ù†Ø´Ø§Ø¡ Ø§Ù„Ø­Ø³Ø§Ø¨',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ForgotPasswordPage extends StatefulWidget {
+  const ForgotPasswordPage({super.key});
+
+  @override
+  State<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
+}
+
+class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
+  final emailController = TextEditingController();
+  final codeController = TextEditingController();
+  final newPasswordController = TextEditingController();
+
+  bool sent = false;
+  bool loading = false;
+  bool obscure = true;
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    codeController.dispose();
+    newPasswordController.dispose();
+    super.dispose();
+  }
+
+  void _show(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text)),
+    );
+  }
+
+  Future<void> _sendCode() async {
+    final email = emailController.text.trim();
+
+    if (!email.contains('@')) {
+      _show('Ø§ÙƒØªØ¨ Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„ Ø§Ù„Ù…Ø³Ø¬Ù„ Ø¨Ø§Ù„Ø­Ø³Ø§Ø¨');
+      return;
+    }
+
+    setState(() => loading = true);
+
+    try {
+      final response = await http.post(
+        Uri.parse('$authBaseUrl/auth/forgot-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      ).timeout(const Duration(seconds: 30));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        setState(() => sent = true);
+        _show('ØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ø±Ù…Ø² Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„ØªØ¹ÙŠÙŠÙ† Ø¥Ù„Ù‰ Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„');
+      } else {
+        _show(data['error']?.toString() ?? 'ØªØ¹Ø°Ø± Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ø±Ù…Ø²');
+      }
+    } catch (_) {
+      _show('ØªØ¹Ø°Ø± Ø§Ù„Ø§ØªØµØ§Ù„ Ø¨Ø§Ù„Ø³ÙŠØ±ÙØ±');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final email = emailController.text.trim();
+    final code = codeController.text.trim();
+    final password = newPasswordController.text;
+
+    if (code.isEmpty || password.length < 6) {
+      _show('Ø£Ø¯Ø®Ù„ Ø±Ù…Ø² Ø§Ù„ØªØ­Ù‚Ù‚ ÙˆÙƒÙ„Ù…Ø© Ù…Ø±ÙˆØ± Ø¬Ø¯ÙŠØ¯Ø© Ù„Ø§ ØªÙ‚Ù„ Ø¹Ù† 6 Ø£Ø­Ø±Ù');
+      return;
+    }
+
+    setState(() => loading = true);
+
+    try {
+      final response = await http.post(
+        Uri.parse('$authBaseUrl/auth/reset-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'code': code,
+          'newPassword': password,
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        if (!mounted) return;
+        _show('ØªÙ… ØªØºÙŠÙŠØ± Ø§Ù„Ø±Ù…Ø² Ø¨Ù†Ø¬Ø§Ø­');
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+        if (!mounted) return;
+        Navigator.pop(context);
+      } else {
+        _show(data['error']?.toString() ?? 'Ø±Ù…Ø² Ø§Ù„ØªØ­Ù‚Ù‚ ØºÙŠØ± ØµØ­ÙŠØ­ Ø£Ùˆ Ù…Ù†ØªÙ‡ÙŠ');
+      }
+    } catch (_) {
+      _show('ØªØ¹Ø°Ø± Ø§Ù„Ø§ØªØµØ§Ù„ Ø¨Ø§Ù„Ø³ÙŠØ±ÙØ±');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Ø§Ø³ØªØ¹Ø§Ø¯Ø© Ø§Ù„Ø±Ù…Ø²')),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600),
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.mark_email_read_outlined,
+                    size: 70,
+                    color: Color(0xFF2563EB),
+                  ),
+                  const SizedBox(height: 15),
+                  const Text(
+                    'Ù†Ø³ÙŠØª Ø§Ù„Ø±Ù…Ø²ØŸ',
+                    style: TextStyle(
+                      fontSize: 27,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Ø£Ø¯Ø®Ù„ Ø¥ÙŠÙ…ÙŠÙ„ Ø­Ø³Ø§Ø¨Ùƒ Ø­ØªÙ‰ Ù†Ø±Ø³Ù„ Ù„Ùƒ Ø±Ù…Ø² Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„ØªØ¹ÙŠÙŠÙ†.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 25),
+                  TextField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    enabled: !sent,
+                    decoration: InputDecoration(
+                      labelText: 'Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„',
+                      prefixIcon: const Icon(Icons.email_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                  if (sent) ...[
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: codeController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Ø±Ù…Ø² Ø§Ù„ØªØ­Ù‚Ù‚',
+                        prefixIcon: const Icon(Icons.pin_outlined),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: newPasswordController,
+                      obscureText: obscure,
+                      decoration: InputDecoration(
+                        labelText: 'Ø§Ù„Ø±Ù…Ø² Ø§Ù„Ø¬Ø¯ÙŠØ¯',
+                        prefixIcon: const Icon(Icons.lock_reset_outlined),
+                        suffixIcon: IconButton(
+                          onPressed: () => setState(() => obscure = !obscure),
+                          icon: Icon(
+                            obscure ? Icons.visibility : Icons.visibility_off,
+                          ),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: FilledButton(
+                      onPressed: loading
+                          ? null
+                          : (sent ? _resetPassword : _sendCode),
+                      child: loading
+                          ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                          : Text(
+                        sent
+                            ? 'ØªØºÙŠÙŠØ± Ø§Ù„Ø±Ù…Ø²'
+                            : 'Ø¥Ø±Ø³Ø§Ù„ Ø±Ù…Ø² Ø¥Ù„Ù‰ Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„',
+                      ),
+                    ),
+                  ),
+                  if (sent)
+                    TextButton(
+                      onPressed: loading
+                          ? null
+                          : () {
+                        setState(() {
+                          sent = false;
+                          codeController.clear();
+                          newPasswordController.clear();
+                        });
+                      },
+                      child: const Text('Ø¥Ø±Ø³Ø§Ù„ Ø±Ù…Ø² Ø¬Ø¯ÙŠØ¯'),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Ø¥Ù†Ø´Ø§Ø¡ Ù…Ù„Ù Ø§Ù„Ø·Ø§Ù„Ø¨
+// ============================================================
+
+class StudentProfilePage extends StatefulWidget {
+  const StudentProfilePage({super.key});
+
+  @override
+  State<StudentProfilePage> createState() =>
+      _StudentProfilePageState();
+}
+
+class _StudentProfilePageState extends State<StudentProfilePage> {
+  final nameController = TextEditingController();
+
+  String? stage;
+  String? grade;
+
+  bool saving = false;
+
+  final primaryGrades = [
+    'Ø§Ù„Ø£ÙˆÙ„ Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠ',
+    'Ø§Ù„Ø«Ø§Ù†ÙŠ Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠ',
+    'Ø§Ù„Ø«Ø§Ù„Ø« Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠ',
+    'Ø§Ù„Ø±Ø§Ø¨Ø¹ Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠ',
+    'Ø§Ù„Ø®Ø§Ù…Ø³ Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠ',
+    'Ø§Ù„Ø³Ø§Ø¯Ø³ Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠ',
+  ];
+
+  final middleGrades = [
+    'Ø§Ù„Ø£ÙˆÙ„ Ø§Ù„Ù…ØªÙˆØ³Ø·',
+    'Ø§Ù„Ø«Ø§Ù†ÙŠ Ø§Ù„Ù…ØªÙˆØ³Ø·',
+    'Ø§Ù„Ø«Ø§Ù„Ø« Ø§Ù„Ù…ØªÙˆØ³Ø·',
+  ];
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> saveStudent() async {
+    final name = nameController.text.trim();
+
+    if (name.isEmpty || stage == null || grade == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ÙŠØ±Ø¬Ù‰ Ø¥ÙƒÙ…Ø§Ù„ Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø§Ù„Ø·Ø§Ù„Ø¨'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      saving = true;
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setString('student_name', name);
+    await prefs.setString('student_stage', stage!);
+    await prefs.setString('student_grade', grade!);
+
+    if (!mounted) return;
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const HomePage(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final grades = stage == 'primary'
+        ? primaryGrades
+        : stage == 'middle'
+        ? middleGrades
+        : <String>[];
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final large = constraints.maxWidth >= 700;
+
+              return Center(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: large ? 80 : 22,
+                    vertical: 30,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 650,
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 90,
+                          height: 90,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFEFF6FF),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.school_rounded,
+                            color: Color(0xFF2563EB),
+                            size: 50,
+                          ),
+                        ),
+
+                        const SizedBox(height: 22),
+
+                        const Text(
+                          'Ù…Ø³Ø§Ø¹Ø¯ Ø§Ù„Ø·Ø§Ù„Ø¨ Ø§Ù„Ø¹Ø±Ø§Ù‚ÙŠ',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        const Text(
+                          'Ø®Ù„ÙŠÙ†Ø§ Ù†Ø¬Ù‡Ø² Ù…Ù„ÙÙƒ Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠ ðŸ“š',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 15,
+                          ),
+                        ),
+
+                        const SizedBox(height: 30),
+
+                        TextField(
+                          controller: nameController,
+                          textDirection: TextDirection.rtl,
+                          decoration: InputDecoration(
+                            labelText: 'Ø§Ø³Ù… Ø§Ù„Ø·Ø§Ù„Ø¨',
+                            hintText: 'Ù…Ø«Ù„Ø§Ù‹: Ø¹Ù„ÙŠ Ù…Ø­Ù…Ø¯',
+                            prefixIcon: const Icon(
+                              Icons.person_outline,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius:
+                              BorderRadius.circular(16),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        DropdownButtonFormField<String>(
+                          value: stage,
+                          decoration: InputDecoration(
+                            labelText: 'Ø§Ù„Ù…Ø±Ø­Ù„Ø© Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠØ©',
+                            prefixIcon: const Icon(
+                              Icons.school_outlined,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius:
+                              BorderRadius.circular(16),
+                            ),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'primary',
+                              child: Text('Ø§Ù„Ù…Ø±Ø­Ù„Ø© Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠØ©'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'middle',
+                              child: Text('Ø§Ù„Ù…Ø±Ø­Ù„Ø© Ø§Ù„Ù…ØªÙˆØ³Ø·Ø©'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setState(() {
+                              stage = value;
+                              grade = null;
+                            });
+                          },
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        DropdownButtonFormField<String>(
+                          value: grade,
+                          decoration: InputDecoration(
+                            labelText: 'Ø§Ù„ØµÙ',
+                            prefixIcon: const Icon(
+                              Icons.menu_book_outlined,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius:
+                              BorderRadius.circular(16),
+                            ),
+                          ),
+                          items: grades
+                              .map(
+                                (item) => DropdownMenuItem(
+                              value: item,
+                              child: Text(item),
+                            ),
+                          )
+                              .toList(),
+                          onChanged: grades.isEmpty
+                              ? null
+                              : (value) {
+                            setState(() {
+                              grade = value;
+                            });
+                          },
+                        ),
+
+                        const SizedBox(height: 28),
+
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: FilledButton(
+                            onPressed:
+                            saving ? null : saveStudent,
+                            child: saving
+                                ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child:
+                              CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                                : const Text(
+                              'Ø§Ø¨Ø¯Ø£ Ø§Ù„Ø¢Ù†',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight:
+                                FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Ø§Ù„ØµÙØ­Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©
+// ============================================================
+
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  int selectedIndex = 0;
+
+  final pages = const [
+    HomeContent(),
+    SubjectsPage(),
+    HomeworkPage(),
+    MorePage(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        body: SafeArea(
+          child: pages[selectedIndex],
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: selectedIndex,
+          onDestinationSelected: (index) {
+            setState(() {
+              selectedIndex = index;
+            });
+          },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: 'Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.menu_book_outlined),
+              selectedIcon: Icon(Icons.menu_book),
+              label: 'Ø§Ù„Ù…ÙˆØ§Ø¯',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.assignment_outlined),
+              selectedIcon: Icon(Icons.assignment),
+              label: 'Ø§Ù„ÙˆØ§Ø¬Ø¨Ø§Øª',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.apps_outlined),
+              selectedIcon: Icon(Icons.apps),
+              label: 'Ø§Ù„Ù…Ø²ÙŠØ¯',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©
+// ============================================================
+
+class HomeContent extends StatefulWidget {
+  const HomeContent({super.key});
+
+  @override
+  State<HomeContent> createState() => _HomeContentState();
+}
+
+class _HomeContentState extends State<HomeContent> {
+  String studentName = '';
+  String studentGrade = '';
+
+  @override
+  void initState() {
+    super.initState();
+    loadStudent();
+  }
+
+  Future<void> loadStudent() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (!mounted) return;
+
+    setState(() {
+      studentName =
+          prefs.getString('student_name') ?? '';
+      studentGrade =
+          prefs.getString('student_grade') ?? '';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final large = constraints.maxWidth >= 700;
+
+        return SingleChildScrollView(
+          padding: EdgeInsets.symmetric(
+            horizontal: large ? 40 : 18,
+            vertical: 18,
+          ),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 1200,
+              ),
+              child: Column(
+                crossAxisAlignment:
+                CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const CircleAvatar(
+                        radius: 25,
+                        backgroundColor:
+                        Color(0xFFEFF6FF),
+                        child: Icon(
+                          Icons.person,
+                          color: Color(0xFF2563EB),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Ø£Ù‡Ù„Ø§Ù‹ $studentName ðŸ‘‹',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight:
+                                FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              studentGrade,
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {},
+                        icon: const Icon(
+                          Icons.notifications_none,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [
+                          Color(0xFF2563EB),
+                          Color(0xFF1D4ED8),
+                        ],
+                      ),
+                      borderRadius:
+                      BorderRadius.circular(25),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Ø¬Ø§Ù‡Ø² Ù„Ù„Ø¯Ø±Ø§Ø³Ø©ØŸ ðŸ“š',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 25,
+                            fontWeight:
+                            FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Ù†Ø¸Ù… Ø¯Ø±Ø§Ø³ØªÙƒØŒ ØªØ§Ø¨Ø¹ ÙˆØ§Ø¬Ø¨Ø§ØªÙƒ\nÙˆØ·ÙˆØ± Ù…Ø³ØªÙˆØ§Ùƒ Ø®Ø·ÙˆØ© Ø¨Ø®Ø·ÙˆØ©.',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            height: 1.6,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 25),
+
+                  const Text(
+                    'Ø£Ø¯ÙˆØ§Øª Ø§Ù„Ø·Ø§Ù„Ø¨',
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  GridView.count(
+                    crossAxisCount: large ? 3 : 2,
+                    shrinkWrap: true,
+                    physics:
+                    const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio:
+                    large ? 2.1 : 1.15,
+                    children: [
+                      _HomeTool(
+                        icon: Icons.menu_book,
+                        title: 'Ø§Ù„Ù…ÙˆØ§Ø¯ Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠØ©',
+                        color: const Color(0xFF2563EB),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                              const SubjectsPage(),
+                            ),
+                          );
+                        },
+                      ),
+                      _HomeTool(
+                        icon: Icons.assignment,
+                        title: 'ÙˆØ§Ø¬Ø¨Ø§ØªÙŠ',
+                        color: const Color(0xFF0891B2),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                              const HomeworkPage(),
+                            ),
+                          );
+                        },
+                      ),
+                      _HomeTool(
+                        icon: Icons.psychology,
+                        title: 'Ø§Ø®ØªØ¨Ø± Ù†ÙØ³Ùƒ',
+                        color: const Color(0xFF7C3AED),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const QuizPage(),
+                            ),
+                          );
+                        },
+                      ),
+                      _HomeTool(
+                        icon: Icons.smart_toy,
+                        title: 'Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯ Ø§Ù„Ø°ÙƒÙŠ',
+                        color: const Color(0xFFEA580C),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                              const AssistantPage(),
+                            ),
+                          );
+                        },
+                      ),
+                      _HomeTool(
+                        icon: Icons.calendar_month,
+                        title: 'Ø¬Ø¯ÙˆÙ„ÙŠ Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠ',
+                        color: const Color(0xFF059669),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const SchedulePage(),
+                            ),
+                          );
+                        },
+                      ),
+                      _HomeTool(
+                        icon: Icons.bar_chart,
+                        title: 'Ø¯Ø±Ø¬Ø§ØªÙŠ',
+                        color: const Color(0xFFDB2777),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const GradesPage(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+
+// ============================================================
+// Ø§Ù„Ø¬Ø¯ÙˆÙ„ Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠ
+// ============================================================
+
+class SchedulePage extends StatefulWidget {
+  const SchedulePage({super.key});
+
+  @override
+  State<SchedulePage> createState() => _SchedulePageState();
+}
+
+class _SchedulePageState extends State<SchedulePage> {
+  static const String _storageKey = 'student_schedule';
+
+  final List<String> days = const [
+    'Ø§Ù„Ø³Ø¨Øª',
+    'Ø§Ù„Ø£Ø­Ø¯',
+    'Ø§Ù„Ø§Ø«Ù†ÙŠÙ†',
+    'Ø§Ù„Ø«Ù„Ø§Ø«Ø§Ø¡',
+    'Ø§Ù„Ø£Ø±Ø¨Ø¹Ø§Ø¡',
+    'Ø§Ù„Ø®Ù…ÙŠØ³',
+  ];
+
+  final List<String> periods = const [
+    'Ø§Ù„Ø£ÙˆÙ„Ù‰',
+    'Ø§Ù„Ø«Ø§Ù†ÙŠØ©',
+    'Ø§Ù„Ø«Ø§Ù„Ø«Ø©',
+    'Ø§Ù„Ø±Ø§Ø¨Ø¹Ø©',
+    'Ø§Ù„Ø®Ø§Ù…Ø³Ø©',
+    'Ø§Ù„Ø³Ø§Ø¯Ø³Ø©',
+  ];
+
+  List<String> subjects = [];
+  Map<String, String> schedule = {};
+  bool loading = true;
+  int selectedDay = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSchedule();
+  }
+
+  Future<void> _loadSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final grade = prefs.getString('student_grade') ?? '';
+    final saved = prefs.getString(_storageKey);
+
+    final loaded = <String, String>{};
+
+    if (saved != null && saved.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(saved);
+
+        if (decoded is Map) {
+          decoded.forEach((key, value) {
+            if (key is String && value is String) {
+              loaded[key] = value;
+            }
+          });
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      subjects = List<String>.from(
+        subjectsByGrade[grade] ?? const <String>[],
+      );
+      schedule = loaded;
+      loading = false;
+    });
+  }
+
+  Future<void> _saveSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_storageKey, jsonEncode(schedule));
+  }
+
+  String _key(int day, int period) => '$day-$period';
+
+  Future<void> _editPeriod(int period) async {
+    final current = schedule[_key(selectedDay, period)] ?? '';
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => _ScheduleDialog(
+        periodName: periods[period],
+        subjects: subjects,
+        currentSubject: current,
+      ),
+    );
+
+    if (result == null) return;
+
+    setState(() {
+      if (result.isEmpty) {
+        schedule.remove(_key(selectedDay, period));
+      } else {
+        schedule[_key(selectedDay, period)] = result;
+      }
+    });
+
+    await _saveSchedule();
+  }
+
+  void _clearDay() {
+    showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Ù…Ø³Ø­ Ø¬Ø¯ÙˆÙ„ Ø§Ù„ÙŠÙˆÙ…'),
+        content: Text(
+          'Ù‡Ù„ ØªØ±ÙŠØ¯ Ù…Ø³Ø­ Ø¬Ù…ÙŠØ¹ Ø­ØµØµ ÙŠÙˆÙ… ${days[selectedDay]}ØŸ',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Ø¥Ù„ØºØ§Ø¡'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              for (int i = 0; i < periods.length; i++) {
+                schedule.remove(_key(selectedDay, i));
+              }
+
+              await _saveSchedule();
+
+              if (!mounted) return;
+              setState(() {});
+              Navigator.pop(context);
+            },
+            child: const Text('Ù…Ø³Ø­'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _daySelector() {
+    return SizedBox(
+      height: 50,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        scrollDirection: Axis.horizontal,
+        itemCount: days.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final selected = selectedDay == index;
+
+          return ChoiceChip(
+            label: Text(days[index]),
+            selected: selected,
+            onSelected: (_) {
+              setState(() {
+                selectedDay = index;
+              });
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _periodCard(int index) {
+    final subject = schedule[_key(selectedDay, index)] ?? '';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(
+          color: Color(0xFFE2E8F0),
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _editPeriod(index),
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFECFDF5),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(
+                      color: Color(0xFF059669),
+                      fontSize: 19,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Ø§Ù„Ø­ØµØ© ${periods[index]}',
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      subject.isEmpty ? 'Ø§Ø¶ØºØ· Ù„Ø¥Ø¶Ø§ÙØ© Ø§Ù„Ù…Ø§Ø¯Ø©' : subject,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: subject.isEmpty
+                            ? Colors.grey
+                            : Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                subject.isEmpty
+                    ? Icons.add_circle_outline
+                    : Icons.edit_outlined,
+                color: const Color(0xFF059669),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'Ø¬Ø¯ÙˆÙ„ÙŠ Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠ',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'Ù…Ø³Ø­ Ø¬Ø¯ÙˆÙ„ Ø§Ù„ÙŠÙˆÙ…',
+              onPressed: _clearDay,
+              icon: const Icon(Icons.delete_sweep_outlined),
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            const SizedBox(height: 10),
+            _daySelector(),
+            const SizedBox(height: 14),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 18),
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.calendar_month_rounded,
+                    color: Color(0xFF059669),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Ø¬Ø¯ÙˆÙ„ ÙŠÙˆÙ… ${days[selectedDay]}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${schedule.entries.where((e) => e.key.startsWith('$selectedDay-')).length}/${periods.length}',
+                    style: const TextStyle(
+                      color: Color(0xFF059669),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 25),
+                itemCount: periods.length,
+                itemBuilder: (_, index) => _periodCard(index),
+              ),
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => _editPeriod(0),
+          icon: const Icon(Icons.add),
+          label: const Text('Ø¥Ø¶Ø§ÙØ© Ø­ØµØ©'),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScheduleDialog extends StatefulWidget {
+  final String periodName;
+  final List<String> subjects;
+  final String currentSubject;
+
+  const _ScheduleDialog({
+    required this.periodName,
+    required this.subjects,
+    required this.currentSubject,
+  });
+
+  @override
+  State<_ScheduleDialog> createState() => _ScheduleDialogState();
+}
+
+class _ScheduleDialogState extends State<_ScheduleDialog> {
+  String? selectedSubject;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedSubject = widget.currentSubject.isEmpty
+        ? null
+        : widget.currentSubject;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        title: Text(
+          'Ø§Ù„Ø­ØµØ© ${widget.periodName}',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: widget.subjects.isEmpty
+            ? const Text(
+          'Ù„Ù… ÙŠØªÙ… ØªØ­Ø¯ÙŠØ¯ ØµÙ Ø§Ù„Ø·Ø§Ù„Ø¨ Ø¨Ø¹Ø¯ØŒ Ù„Ø°Ù„Ùƒ Ù„Ø§ ØªÙˆØ¬Ø¯ Ù…ÙˆØ§Ø¯ Ù„Ù„Ø§Ø®ØªÙŠØ§Ø±.',
+        )
+            : DropdownButtonFormField<String>(
+          value: selectedSubject,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: 'Ø§Ø®ØªÙŠØ§Ø± Ø§Ù„Ù…Ø§Ø¯Ø©',
+            prefixIcon: const Icon(Icons.menu_book_outlined),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          items: widget.subjects
+              .map(
+                (subject) => DropdownMenuItem<String>(
+              value: subject,
+              child: Text(subject),
+            ),
+          )
+              .toList(),
+          onChanged: (value) {
+            setState(() {
+              selectedSubject = value;
+            });
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Ø¥Ù„ØºØ§Ø¡'),
+          ),
+          if (widget.currentSubject.isNotEmpty)
+            TextButton(
+              onPressed: () => Navigator.pop(context, ''),
+              child: const Text('Ù…Ø³Ø­ Ø§Ù„Ø­ØµØ©'),
+            ),
+          FilledButton(
+            onPressed: widget.subjects.isEmpty
+                ? null
+                : () => Navigator.pop(
+              context,
+              selectedSubject ?? '',
+            ),
+            child: const Text('Ø­ÙØ¸'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+
+// ============================================================
+// Ø¯Ø±Ø¬Ø§ØªÙŠ
+// ============================================================
+
+class GradesPage extends StatefulWidget {
+  const GradesPage({super.key});
+
+  @override
+  State<GradesPage> createState() => _GradesPageState();
+}
+
+class _GradesPageState extends State<GradesPage> {
+  static const String _storageKey = 'student_grades';
+
+  List<String> subjects = [];
+  Map<String, double> grades = {};
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGrades();
+  }
+
+  Future<void> _loadGrades() async {
+    final prefs = await SharedPreferences.getInstance();
+    final gradeName = prefs.getString('student_grade') ?? '';
+
+    final loaded = <String, double>{};
+    final saved = prefs.getString(_storageKey);
+
+    if (saved != null && saved.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(saved);
+
+        if (decoded is Map) {
+          decoded.forEach((key, value) {
+            if (key is String && value is num) {
+              loaded[key] = value.toDouble();
+            }
+          });
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      subjects = List<String>.from(
+        subjectsByGrade[gradeName] ?? const <String>[],
+      );
+      grades = loaded;
+      loading = false;
+    });
+  }
+
+  Future<void> _saveGrades() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_storageKey, jsonEncode(grades));
+  }
+
+  double get average {
+    if (grades.isEmpty) return 0;
+
+    final total = grades.values.fold<double>(
+      0,
+          (sum, value) => sum + value,
+    );
+
+    return total / grades.length;
+  }
+
+  String _resultText(double value) {
+    if (value >= 90) return 'Ù…Ù…ØªØ§Ø²';
+    if (value >= 80) return 'Ø¬ÙŠØ¯ Ø¬Ø¯Ø§Ù‹';
+    if (value >= 70) return 'Ø¬ÙŠØ¯';
+    if (value >= 50) return 'Ù…Ù‚Ø¨ÙˆÙ„';
+    return 'ÙŠØ­ØªØ§Ø¬ Ù…Ø±Ø§Ø¬Ø¹Ø©';
+  }
+
+  Future<void> _editGrade(String subject) async {
+    final result = await showDialog<double>(
+      context: context,
+      builder: (_) => _GradeDialog(
+        subject: subject,
+        currentGrade: grades[subject],
+      ),
+    );
+
+    if (result == null) return;
+
+    setState(() {
+      grades[subject] = result;
+    });
+
+    await _saveGrades();
+  }
+
+  Future<void> _deleteGrade(String subject) async {
+    setState(() {
+      grades.remove(subject);
+    });
+
+    await _saveGrades();
+  }
+
+  Widget _summaryCard() {
+    final averageValue = average;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFFDB2777),
+            Color(0xFFBE185D),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'Ù…Ø¹Ø¯Ù„ÙŠ Ø§Ù„Ø­Ø§Ù„ÙŠ',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            grades.isEmpty
+                ? 'â€”'
+                : '${averageValue.toStringAsFixed(1)} / 100',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          if (grades.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text(
+              _resultText(averageValue),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _SummaryMini(
+                  title: 'Ø§Ù„Ù…ÙˆØ§Ø¯',
+                  value: '${grades.length}/${subjects.length}',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _SummaryMini(
+                  title: 'Ø£Ø¹Ù„Ù‰ Ø¯Ø±Ø¬Ø©',
+                  value: grades.isEmpty
+                      ? 'â€”'
+                      : grades.values
+                      .reduce((a, b) => a > b ? a : b)
+                      .toStringAsFixed(0),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _subjectCard(String subject) {
+    final value = grades[subject];
+    final hasGrade = value != null;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(
+          color: Color(0xFFE2E8F0),
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => _editGrade(subject),
+        child: Padding(
+          padding: const EdgeInsets.all(15),
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: hasGrade
+                      ? const Color(0xFFFCE7F3)
+                      : const Color(0xFFF1F5F9),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.menu_book_rounded,
+                  color: hasGrade
+                      ? const Color(0xFFDB2777)
+                      : Colors.grey,
+                ),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      subject,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      hasGrade
+                          ? _resultText(value!)
+                          : 'Ø§Ø¶ØºØ· Ù„Ø¥Ø¶Ø§ÙØ© Ø§Ù„Ø¯Ø±Ø¬Ø©',
+                      style: TextStyle(
+                        color: hasGrade
+                            ? const Color(0xFFDB2777)
+                            : Colors.grey,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (hasGrade)
+                Text(
+                  '${value!.toStringAsFixed(0)}/100',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFFDB2777),
+                  ),
+                )
+              else
+                const Icon(
+                  Icons.add_circle_outline,
+                  color: Color(0xFFDB2777),
+                ),
+              if (hasGrade)
+                PopupMenuButton<String>(
+                  onSelected: (action) {
+                    if (action == 'edit') {
+                      _editGrade(subject);
+                    } else if (action == 'delete') {
+                      _deleteGrade(subject);
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: Text('ØªØ¹Ø¯ÙŠÙ„'),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Ø­Ø°Ù'),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'Ø¯Ø±Ø¬Ø§ØªÙŠ',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+        body: subjects.isEmpty
+            ? const Center(
+          child: Text(
+            'Ù„Ù… ÙŠØªÙ… Ø§Ø®ØªÙŠØ§Ø± Ø§Ù„ØµÙ Ø¨Ø¹Ø¯',
+            style: TextStyle(
+              fontSize: 17,
+              color: Colors.grey,
+            ),
+          ),
+        )
+            : ListView(
+          padding: const EdgeInsets.only(bottom: 30),
+          children: [
+            _summaryCard(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Ø¯Ø±Ø¬Ø§Øª Ø§Ù„Ù…ÙˆØ§Ø¯',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${grades.length} Ù…Ø³Ø¬Ù„Ø©',
+                    style: const TextStyle(
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Column(
+                children: subjects
+                    .map(_subjectCard)
+                    .toList(),
+              ),
+            ),
+          ],
+        ),
+        floatingActionButton: subjects.isEmpty
+            ? null
+            : FloatingActionButton.extended(
+          onPressed: () async {
+            final available = subjects
+                .where((subject) => !grades.containsKey(subject))
+                .toList();
+
+            if (available.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('ÙƒÙ„ Ø§Ù„Ù…ÙˆØ§Ø¯ ØªÙ…Øª Ø¥Ø¶Ø§ÙØ© Ø¯Ø±Ø¬Ø§ØªÙ‡Ø§'),
+                  duration: Duration(seconds: 1),
+                ),
+              );
+              return;
+            }
+
+            final subject = await showDialog<String>(
+              context: context,
+              builder: (_) => _ChooseSubjectDialog(
+                subjects: available,
+              ),
+            );
+
+            if (subject != null) {
+              await _editGrade(subject);
+            }
+          },
+          icon: const Icon(Icons.add),
+          label: const Text('Ø¥Ø¶Ø§ÙØ© Ø¯Ø±Ø¬Ø©'),
+        ),
+      ),
+    );
+  }
+}
+
+class _SummaryMini extends StatelessWidget {
+  final String title;
+  final String value;
+
+  const _SummaryMini({
+    required this.title,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        vertical: 10,
+        horizontal: 8,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GradeDialog extends StatefulWidget {
+  final String subject;
+  final double? currentGrade;
+
+  const _GradeDialog({
+    required this.subject,
+    required this.currentGrade,
+  });
+
+  @override
+  State<_GradeDialog> createState() => _GradeDialogState();
+}
+
+class _GradeDialogState extends State<_GradeDialog> {
+  late final TextEditingController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = TextEditingController(
+      text: widget.currentGrade == null
+          ? ''
+          : widget.currentGrade!.toStringAsFixed(0),
+    );
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        title: Text(
+          'Ø¯Ø±Ø¬Ø© ${widget.subject}',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(
+            decimal: true,
+          ),
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: 'Ø§Ù„Ø¯Ø±Ø¬Ø© Ù…Ù† 100',
+            hintText: 'Ù…Ø«Ù„Ø§Ù‹ 85',
+            prefixIcon: const Icon(Icons.star_outline),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Ø¥Ù„ØºØ§Ø¡'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = double.tryParse(
+                controller.text.trim().replaceAll(',', '.'),
+              );
+
+              if (value == null || value < 0 || value > 100) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Ø§ÙƒØªØ¨ Ø¯Ø±Ø¬Ø© ØµØ­ÙŠØ­Ø© Ù…Ù† 0 Ø¥Ù„Ù‰ 100'),
+                    duration: Duration(seconds: 1),
+                  ),
+                );
+                return;
+              }
+
+              Navigator.pop(context, value);
+            },
+            child: const Text('Ø­ÙØ¸'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChooseSubjectDialog extends StatelessWidget {
+  final List<String> subjects;
+
+  const _ChooseSubjectDialog({
+    required this.subjects,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        title: const Text(
+          'Ø§Ø®ØªÙŠØ§Ø± Ø§Ù„Ù…Ø§Ø¯Ø©',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: subjects.length,
+            itemBuilder: (_, index) {
+              final subject = subjects[index];
+
+              return ListTile(
+                leading: const Icon(
+                  Icons.menu_book_outlined,
+                  color: Color(0xFFDB2777),
+                ),
+                title: Text(subject),
+                onTap: () => Navigator.pop(
+                  context,
+                  subject,
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+// ============================================================
+// Ø§Ù„Ù…ÙˆØ§Ø¯
+// ============================================================
+
+class SubjectsPage extends StatefulWidget {
+  const SubjectsPage({super.key});
+
+  @override
+  State<SubjectsPage> createState() => _SubjectsPageState();
+}
+
+class _SubjectsPageState extends State<SubjectsPage> {
+  String studentGrade = '';
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    loadGrade();
+  }
+
+  Future<void> loadGrade() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    if (!mounted) return;
+
+    setState(() {
+      studentGrade = prefs.getString('student_grade') ?? '';
+      loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    final subjects = subjectsByGrade[studentGrade] ?? [];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Ø§Ù„Ù…ÙˆØ§Ø¯ Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠØ©',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      body: subjects.isEmpty
+          ? const Center(
+        child: Text(
+          'Ù„Ù… ÙŠØªÙ… Ø§Ø®ØªÙŠØ§Ø± Ø§Ù„ØµÙ Ø¨Ø¹Ø¯',
+          style: TextStyle(
+            fontSize: 17,
+            color: Colors.grey,
+          ),
+        ),
+      )
+          : LayoutBuilder(
+        builder: (context, constraints) {
+          final columns =
+          constraints.maxWidth >= 900 ? 4 : 2;
+
+          return GridView.builder(
+            padding: const EdgeInsets.all(18),
+            itemCount: subjects.length,
+            gridDelegate:
+            SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.05,
+            ),
+            itemBuilder: (context, index) {
+              final subject = subjects[index];
+
+              return SubjectCard(
+                subject: subject,
+                index: index,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SubjectPage(
+                        subjectName: subject,
+                        grade: studentGrade,
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+class SubjectCard extends StatelessWidget {
+  final String subject;
+  final int index;
+  final VoidCallback onTap;
+
+  const SubjectCard({
+    super.key,
+    required this.subject,
+    required this.index,
+    required this.onTap,
+  });
+
+  static const colors = [
+    Color(0xFF2563EB),
+    Color(0xFF7C3AED),
+    Color(0xFF059669),
+    Color(0xFFEA580C),
+    Color(0xFFDB2777),
+    Color(0xFF0891B2),
+  ];
+
+  static const icons = [
+    Icons.menu_book_rounded,
+    Icons.calculate_rounded,
+    Icons.science_rounded,
+    Icons.language_rounded,
+    Icons.public_rounded,
+    Icons.school_rounded,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final color = colors[index % colors.length];
+    final icon = icons[index % icons.length];
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: const Color(0xFFE2E8F0),
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.10),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                color: color,
+                size: 30,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              subject,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 7),
+            const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              size: 13,
+              color: Colors.grey,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SubjectPage extends StatelessWidget {
+  final String subjectName;
+  final String grade;
+
+  const SubjectPage({
+    super.key,
+    required this.subjectName,
+    required this.grade,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final books = booksByGrade[grade]?[subjectName] ?? const <BookItem>[];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          subjectName,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          Text(grade, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+          const SizedBox(height: 6),
+          Text(subjectName, style: const TextStyle(fontSize: 25, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
+          ...books.map((book) => Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Card(
+              elevation: 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(22),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BookViewerPage(title: book.title, assetPath: book.assetPath),
+                    ),
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 64,
+                        height: 64,
+                        decoration: const BoxDecoration(color: Color(0xFFEFF6FF), shape: BoxShape.circle),
+                        child: const Icon(Icons.menu_book_rounded, color: Color(0xFF2563EB), size: 34),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(book.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 6),
+                            const Text('Ø§Ù„ÙƒØªØ§Ø¨ ÙƒØ§Ù…Ù„ Ø¨Ø¯ÙˆÙ† ØªÙ‚Ø³ÙŠÙ…', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.grey, size: 18),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          )),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Ø§Ù„ÙˆØ§Ø¬Ø¨Ø§Øª
+// ============================================================
+
+class HomeworkPage extends StatefulWidget {
+  const HomeworkPage({super.key});
+
+  @override
+  State<HomeworkPage> createState() => _HomeworkPageState();
+}
+
+class _HomeworkPageState extends State<HomeworkPage> {
+  static const String _storageKey = 'student_homeworks';
+
+  List<_HomeworkData> homeworks = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHomeworks();
+  }
+
+  Future<void> _loadHomeworks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList(_storageKey) ?? [];
+    final loaded = <_HomeworkData>[];
+
+    for (final item in saved) {
+      final parts = item.split('|');
+      if (parts.length >= 5) {
+        loaded.add(_HomeworkData(
+          subject: parts[0],
+          title: parts[1],
+          dueDate: parts[2],
+          completed: parts[3] == 'true',
+          id: parts[4],
+        ));
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      homeworks = loaded;
+      loading = false;
+    });
+  }
+
+  Future<void> _saveHomeworks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = homeworks.map((item) =>
+    '${item.subject}|${item.title}|${item.dueDate}|${item.completed}|${item.id}').toList();
+    await prefs.setStringList(_storageKey, saved);
+  }
+
+  Future<void> _addHomework() async {
+    final result = await showDialog<_HomeworkData>(
+      context: context,
+      builder: (_) => const _AddHomeworkDialog(),
+    );
+    if (result == null) return;
+    setState(() => homeworks.insert(0, result));
+    await _saveHomeworks();
+  }
+
+  Future<void> _toggleHomework(int index) async {
+    setState(() {
+      homeworks[index].completed = !homeworks[index].completed;
+    });
+    await _saveHomeworks();
+  }
+
+  Future<void> _deleteHomework(int index) async {
+    final removed = homeworks[index];
+    setState(() => homeworks.removeAt(index));
+    await _saveHomeworks();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('ØªÙ… Ø­Ø°Ù ÙˆØ§Ø¬Ø¨ ${removed.title}')),
+    );
+  }
+
+  String _formatDate(String value) {
+    if (value.isEmpty) return '';
+    final date = DateTime.tryParse(value);
+    if (date == null) return value;
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(30),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 95,
+              height: 95,
+              decoration: const BoxDecoration(
+                color: Color(0xFFEFF6FF),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.assignment_outlined,
+                  color: Color(0xFF2563EB), size: 48),
+            ),
+            const SizedBox(height: 20),
+            const Text('Ù…Ø§ Ø¹Ù†Ø¯Ùƒ ÙˆØ§Ø¬Ø¨Ø§Øª Ø­Ø§Ù„ÙŠØ§Ù‹',
+                style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            const Text(
+              'Ø£Ø¶Ù ÙˆØ§Ø¬Ø¨Ùƒ Ø§Ù„Ø£ÙˆÙ„ Ø­ØªÙ‰ ØªØªØ§Ø¨Ø¹Ù‡ ÙˆØªØ¹Ø±Ù Ù…ÙˆØ¹Ø¯ ØªØ³Ù„ÙŠÙ…Ù‡.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, height: 1.5),
+            ),
+            const SizedBox(height: 22),
+            FilledButton.icon(
+              onPressed: _addHomework,
+              icon: const Icon(Icons.add),
+              label: const Text('Ø¥Ø¶Ø§ÙØ© ÙˆØ§Ø¬Ø¨'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummary() {
+    final completed = homeworks.where((item) => item.completed).length;
+    final remaining = homeworks.length - completed;
+    return Row(
+      children: [
+        Expanded(child: _HomeworkSummaryCard(title: 'ÙƒÙ„ Ø§Ù„ÙˆØ§Ø¬Ø¨Ø§Øª', value: '${homeworks.length}', icon: Icons.assignment)),
+        const SizedBox(width: 10),
+        Expanded(child: _HomeworkSummaryCard(title: 'Ø§Ù„Ù…ØªØ¨Ù‚ÙŠ', value: '$remaining', icon: Icons.pending_actions)),
+        const SizedBox(width: 10),
+        Expanded(child: _HomeworkSummaryCard(title: 'Ø§Ù„Ù…ÙƒØªÙ…Ù„', value: '$completed', icon: Icons.check_circle_outline)),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Ø§Ù„ÙˆØ§Ø¬Ø¨Ø§Øª', style: TextStyle(fontWeight: FontWeight.bold)),
+          actions: [
+            IconButton(
+              onPressed: _addHomework,
+              icon: const Icon(Icons.add),
+              tooltip: 'Ø¥Ø¶Ø§ÙØ© ÙˆØ§Ø¬Ø¨',
+            ),
+          ],
+        ),
+        body: loading
+            ? const Center(child: CircularProgressIndicator())
+            : homeworks.isEmpty
+            ? _buildEmptyState()
+            : ListView(
+          padding: const EdgeInsets.all(18),
+          children: [
+            _buildSummary(),
+            const SizedBox(height: 18),
+            ...List.generate(
+              homeworks.length,
+                  (index) {
+                final item = homeworks[index];
+                return _HomeworkItem(
+                  subject: item.subject,
+                  title: item.title,
+                  dueDate: _formatDate(item.dueDate),
+                  completed: item.completed,
+                  onChanged: (_) => _toggleHomework(index),
+                  onDelete: () => _deleteHomework(index),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeworkData {
+  final String subject;
+  final String title;
+  final String dueDate;
+  final String id;
+  bool completed;
+
+  _HomeworkData({
+    required this.subject,
+    required this.title,
+    required this.dueDate,
+    required this.completed,
+    required this.id,
+  });
+}
+
+class _AddHomeworkDialog extends StatefulWidget {
+  const _AddHomeworkDialog();
+
+  @override
+  State<_AddHomeworkDialog> createState() => _AddHomeworkDialogState();
+}
+
+class _AddHomeworkDialogState extends State<_AddHomeworkDialog> {
+  final titleController = TextEditingController();
+
+  String? subject;
+  DateTime? dueDate;
+
+  final subjects = const [
+    'Ø§Ù„ØªØ±Ø¨ÙŠØ© Ø§Ù„Ø¥Ø³Ù„Ø§Ù…ÙŠØ©',
+    'Ø§Ù„Ù„ØºØ© Ø§Ù„Ø¹Ø±Ø¨ÙŠØ©',
+    'Ø§Ù„Ù‚Ø±Ø§Ø¡Ø©',
+    'Ø§Ù„Ù‚ÙˆØ§Ø¹Ø¯',
+    'Ø§Ù„Ø±ÙŠØ§Ø¶ÙŠØ§Øª',
+    'Ø§Ù„Ø¹Ù„ÙˆÙ…',
+    'Ø§Ù„Ù„ØºØ© Ø§Ù„Ø¥Ù†ÙƒÙ„ÙŠØ²ÙŠØ©',
+    'Ø§Ù„Ø§Ø¬ØªÙ…Ø§Ø¹ÙŠØ§Øª',
+    'Ø§Ù„Ø£Ø­ÙŠØ§Ø¡',
+    'Ø§Ù„ÙƒÙŠÙ…ÙŠØ§Ø¡',
+    'Ø§Ù„ÙÙŠØ²ÙŠØ§Ø¡',
+    'Ø§Ù„Ù„ØºØ© Ø§Ù„ÙØ±Ù†Ø³ÙŠØ©',
+    'Ø§Ù„Ø­Ø§Ø³ÙˆØ¨',
+    'Ø§Ù„ØªØ±Ø¨ÙŠØ© Ø§Ù„Ø£Ø®Ù„Ø§Ù‚ÙŠØ©',
+  ];
+
+  @override
+  void dispose() {
+    titleController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _chooseDate() async {
+    final now = DateTime.now();
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: dueDate ?? now,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 5),
+      helpText: 'Ø§Ø®ØªØ± Ù…ÙˆØ¹Ø¯ ØªØ³Ù„ÙŠÙ… Ø§Ù„ÙˆØ§Ø¬Ø¨',
+      cancelText: 'Ø¥Ù„ØºØ§Ø¡',
+      confirmText: 'Ø§Ø®ØªÙŠØ§Ø±',
+    );
+
+    if (picked != null) {
+      setState(() {
+        dueDate = picked;
+      });
+    }
+  }
+
+  void _save() {
+    final title = titleController.text.trim();
+
+    if (subject == null || title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ÙŠØ±Ø¬Ù‰ Ø§Ø®ØªÙŠØ§Ø± Ø§Ù„Ù…Ø§Ø¯Ø© ÙˆÙƒØªØ§Ø¨Ø© Ø§Ù„ÙˆØ§Ø¬Ø¨'),
+        ),
+      );
+      return;
+    }
+
+    Navigator.pop(
+      context,
+      _HomeworkData(
+        subject: subject!,
+        title: title,
+        dueDate: dueDate?.toIso8601String() ?? '',
+        completed: false,
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        title: const Text(
+          'Ø¥Ø¶Ø§ÙØ© ÙˆØ§Ø¬Ø¨ Ø¬Ø¯ÙŠØ¯',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: subject,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: 'Ø§Ù„Ù…Ø§Ø¯Ø©',
+                  prefixIcon: const Icon(Icons.menu_book_outlined),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                items: subjects
+                    .map(
+                      (item) => DropdownMenuItem<String>(
+                    value: item,
+                    child: Text(item),
+                  ),
+                )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    subject = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: titleController,
+                maxLines: 3,
+                textDirection: TextDirection.rtl,
+                decoration: InputDecoration(
+                  labelText: 'Ø§Ù„ÙˆØ§Ø¬Ø¨',
+                  hintText: 'Ù…Ø«Ù„Ø§Ù‹: Ø­Ù„ ØªÙ…Ø§Ø±ÙŠÙ† Ø§Ù„ØµÙØ­Ø© 25',
+                  prefixIcon: const Icon(Icons.edit_note),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              InkWell(
+                onTap: _chooseDate,
+                borderRadius: BorderRadius.circular(14),
+                child: InputDecorator(
+                  decoration: InputDecoration(
+                    labelText: 'Ù…ÙˆØ¹Ø¯ Ø§Ù„ØªØ³Ù„ÙŠÙ…',
+                    prefixIcon: const Icon(Icons.calendar_month),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Text(
+                    dueDate == null
+                        ? 'Ø§Ø®ØªÙŠØ§Ø±ÙŠ - Ù„Ù… ÙŠØªÙ… ØªØ­Ø¯ÙŠØ¯ Ù…ÙˆØ¹Ø¯'
+                        : '${dueDate!.day.toString().padLeft(2, '0')}/'
+                        '${dueDate!.month.toString().padLeft(2, '0')}/'
+                        '${dueDate!.year}',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Ø¥Ù„ØºØ§Ø¡'),
+          ),
+          FilledButton(
+            onPressed: _save,
+            child: const Text('Ø­ÙØ¸ Ø§Ù„ÙˆØ§Ø¬Ø¨'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeworkSummaryCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final IconData icon;
+
+  const _HomeworkSummaryCard({
+    required this.title,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 8,
+        vertical: 13,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            size: 22,
+            color: const Color(0xFF2563EB),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.grey,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// ============================================================
+// Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯
+// ============================================================
+
+class AssistantPage extends StatefulWidget {
+  const AssistantPage({super.key});
+
+  @override
+  State<AssistantPage> createState() => _AssistantPageState();
+}
+
+class _AssistantMessage {
+  final String text;
+  final bool isUser;
+  final Uint8List? imageBytes;
+
+  const _AssistantMessage({
+    required this.text,
+    required this.isUser,
+    this.imageBytes,
+  });
+}
+
+class _AssistantPageState extends State<AssistantPage> {
+  final controller = TextEditingController();
+  final scrollController = ScrollController();
+  final ImagePicker picker = ImagePicker();
+
+  final messages = <_AssistantMessage>[
+    const _AssistantMessage(
+      text: 'Ø£Ù‡Ù„Ø§Ù‹ Ø¨Ùƒ ðŸ‘‹ Ø£Ù†Ø§ Ù…Ø³Ø§Ø¹Ø¯Ùƒ Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠ. ØµÙˆÙ‘Ø± ÙˆØ§Ø¬Ø¨Ùƒ Ø£Ùˆ Ø§ÙƒØªØ¨ Ø³Ø¤Ø§Ù„Ùƒ ÙˆØ£Ù†Ø§ Ø£Ø³Ø§Ø¹Ø¯Ùƒ Ø®Ø·ÙˆØ© Ø¨Ø®Ø·ÙˆØ©.',
+      isUser: false,
+    ),
+  ];
+
+  bool sending = false;
+
+  Uint8List? selectedImageBytes;
+  String? selectedImageMimeType;
+
+  static const String serverUrl =
+      'https://sahnaha-server.vercel.app/api/chat';
+
+  @override
+  void dispose() {
+    controller.dispose();
+    scrollController.dispose();
+    super.dispose();
+  }
+
+  // ============================================================
+  // Ø§Ø®ØªÙŠØ§Ø± ØµÙˆØ±Ø© Ù…Ù† Ø§Ù„Ù…Ø¹Ø±Ø¶
+  // ============================================================
+
+  Future<void> pickFromGallery() async {
+    if (sending) return;
+
+    try {
+      final XFile? file = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 75,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+
+      if (file == null) return;
+
+      final bytes = await file.readAsBytes();
+
+      if (!mounted) return;
+
+      setState(() {
+        selectedImageBytes = bytes;
+        selectedImageMimeType = _getMimeType(file);
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ØªØ¹Ø°Ø± Ø§Ø®ØªÙŠØ§Ø± Ø§Ù„ØµÙˆØ±Ø©'),
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§
+  // ============================================================
+
+  Future<void> takePhoto() async {
+    if (sending) return;
+
+    try {
+      final XFile? file = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 75,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+
+      if (file == null) return;
+
+      final bytes = await file.readAsBytes();
+
+      if (!mounted) return;
+
+      setState(() {
+        selectedImageBytes = bytes;
+        selectedImageMimeType = _getMimeType(file);
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('ØªØ¹Ø°Ø± ÙØªØ­ Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§'),
+        ),
+      );
+    }
+  }
+
+  String _getMimeType(XFile file) {
+    final mime = file.mimeType;
+
+    if (mime != null && mime.isNotEmpty) {
+      return mime;
+    }
+
+    final path = file.path.toLowerCase();
+
+    if (path.endsWith('.png')) {
+      return 'image/png';
+    }
+
+    if (path.endsWith('.webp')) {
+      return 'image/webp';
+    }
+
+    return 'image/jpeg';
+  }
+
+  void removeSelectedImage() {
+    if (sending) return;
+
+    setState(() {
+      selectedImageBytes = null;
+      selectedImageMimeType = null;
+    });
+  }
+
+  // ============================================================
+  // Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ø³Ø¤Ø§Ù„ / Ø§Ù„ØµÙˆØ±Ø©
+  // ============================================================
+
+  Future<void> send({
+    String? customPrompt,
+  }) async {
+    final typedText = controller.text.trim();
+    final text = customPrompt ?? typedText;
+
+    if ((text.isEmpty && selectedImageBytes == null) || sending) {
+      return;
+    }
+
+    final imageBytes = selectedImageBytes;
+    final imageMimeType = selectedImageMimeType ?? 'image/jpeg';
+
+    final imageBase64 =
+    imageBytes != null ? base64Encode(imageBytes) : null;
+
+    final userText = text.isEmpty
+        ? 'Ø­Ù„ Ù‡Ø§ÙŠ Ø§Ù„ØµÙˆØ±Ø© ÙˆØ§Ø´Ø±Ø­Ù„ÙŠ Ø§Ù„Ø­Ù„ Ø®Ø·ÙˆØ© Ø¨Ø®Ø·ÙˆØ©.'
+        : text;
+
+    controller.clear();
+
+    setState(() {
+      messages.add(
+        _AssistantMessage(
+          text: userText,
+          isUser: true,
+          imageBytes: imageBytes,
+        ),
+      );
+
+      selectedImageBytes = null;
+      selectedImageMimeType = null;
+      sending = true;
+    });
+
+    _scrollToBottom();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final studentName =
+          prefs.getString('student_name') ?? 'Ø§Ù„Ø·Ø§Ù„Ø¨';
+
+      final studentGrade =
+          prefs.getString('student_grade') ?? 'ØºÙŠØ± Ù…Ø­Ø¯Ø¯';
+
+      final response = await http
+          .post(
+        Uri.parse(serverUrl),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'message': text,
+          'studentName': studentName,
+          'studentGrade': studentGrade,
+          'image': imageBase64,
+          'imageMimeType': imageMimeType,
+        }),
+      )
+          .timeout(
+        const Duration(seconds: 60),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        final answer = data['answer']?.toString();
+
+        if (data['success'] == true &&
+            answer != null &&
+            answer.isNotEmpty) {
+          setState(() {
+            messages.add(
+              _AssistantMessage(
+                text: answer,
+                isUser: false,
+              ),
+            );
+          });
+        } else {
+          setState(() {
+            messages.add(
+              const _AssistantMessage(
+                text: 'Ø¹Ø°Ø±Ø§Ù‹ØŒ Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯ Ù…Ø§ Ù‚Ø¯Ø± ÙŠØ·Ù„Ø¹ Ø¬ÙˆØ§Ø¨ Ø­Ø§Ù„ÙŠØ§Ù‹.',
+                isUser: false,
+              ),
+            );
+          });
+        }
+      } else {
+        String errorText = 'ØªØ¹Ø°Ø± Ø§Ù„Ø§ØªØµØ§Ù„ Ø¨Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯.\nØ±Ù…Ø² Ø§Ù„Ø®Ø·Ø£: ${response.statusCode}';
+
+        try {
+          final data = jsonDecode(response.body);
+          final serverError = data['error']?.toString();
+
+          if (serverError != null && serverError.isNotEmpty) {
+            errorText = 'ØªØ¹Ø°Ø± Ø§Ù„Ø§ØªØµØ§Ù„ Ø¨Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯.\n$serverError';
+          }
+        } catch (_) {}
+
+        setState(() {
+          messages.add(
+            _AssistantMessage(
+              text: errorText,
+              isUser: false,
+            ),
+          );
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        messages.add(
+          const _AssistantMessage(
+            text:
+            'Ù…Ø§ Ù‚Ø¯Ø±Øª Ø£ØªØµÙ„ Ø¨Ø§Ù„Ø³ÙŠØ±ÙØ± ðŸ¤–\n\n'
+                'ØªØ£ÙƒØ¯ Ù…Ù† Ø§ØªØµØ§Ù„ Ø§Ù„Ø¥Ù†ØªØ±Ù†Øª ÙˆØ­Ø§ÙˆÙ„ Ù…Ø±Ø© Ø«Ø§Ù†ÙŠØ©.',
+            isUser: false,
+          ),
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          sending = false;
+        });
+
+        _scrollToBottom();
+      }
+    }
+  }
+
+  // ============================================================
+  // Ø£ÙˆØ§Ù…Ø± Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯
+  // ============================================================
+
+  Future<void> repeatExplanation(String answer) async {
+    await send(
+      customPrompt:
+      'Ø£Ø¹Ø¯ Ø´Ø±Ø­ Ø¬ÙˆØ§Ø¨Ùƒ Ø§Ù„Ø³Ø§Ø¨Ù‚ Ø¨Ø·Ø±ÙŠÙ‚Ø© Ø£ÙˆØ¶Ø­ ÙˆØ¨Ø®Ø·ÙˆØ§Øª Ø£Ø¨Ø³Ø·ØŒ '
+          'ÙˆÙ…Ù†Ø§Ø³Ø¨Ø© Ù„ØµÙ Ø§Ù„Ø·Ø§Ù„Ø¨. Ù„Ø§ ØªØ®ØªØµØ± Ø§Ù„Ø­Ù„.',
+    );
+  }
+
+  Future<void> simplifyExplanation(String answer) async {
+    await send(
+      customPrompt:
+      'Ø§Ø´Ø±Ø­ Ø¬ÙˆØ§Ø¨Ùƒ Ø§Ù„Ø³Ø§Ø¨Ù‚ Ø¨Ø·Ø±ÙŠÙ‚Ø© Ø£Ø¨Ø³Ø· Ø¬Ø¯Ø§Ù‹ ÙˆÙƒØ£Ù†Ùƒ ØªØ´Ø±Ø­ Ù„Ø·Ø§Ù„Ø¨ ØµØºÙŠØ±ØŒ '
+          'ÙˆØ§Ø³ØªØ®Ø¯Ù… Ù…Ø«Ø§Ù„Ø§Ù‹ Ø¨Ø³ÙŠØ·Ø§Ù‹ Ø¥Ø°Ø§ ÙƒØ§Ù† Ø°Ù„Ùƒ ÙŠØ³Ø§Ø¹Ø¯ Ø¹Ù„Ù‰ Ø§Ù„ÙÙ‡Ù….',
+    );
+  }
+
+  Future<void> makeQuiz(String answer) async {
+    await send(
+      customPrompt:
+      'Ø§Ø¹Ù…Ù„ Ù„ÙŠ Ø³Ø¤Ø§Ù„Ø§Ù‹ ØªØ¯Ø±ÙŠØ¨ÙŠØ§Ù‹ Ù…Ø´Ø§Ø¨Ù‡Ø§Ù‹ Ù„Ù„Ù…ÙˆØ¶ÙˆØ¹ Ø§Ù„Ø°ÙŠ Ø´Ø±Ø­ØªÙ‡ Ù„Ù„ØªÙˆ. '
+          'Ù„Ø§ ØªØ¹Ø·Ù Ø§Ù„Ø¬ÙˆØ§Ø¨ Ù…Ø¨Ø§Ø´Ø±Ø©. Ø§ØªØ±Ùƒ Ù„Ù„Ø·Ø§Ù„Ø¨ ÙØ±ØµØ© ÙŠØ­Ø§ÙˆÙ„ØŒ '
+          'Ø«Ù… Ø§Ø·Ù„Ø¨ Ù…Ù†Ù‡ Ø£Ù† ÙŠØ±Ø³Ù„ Ø¥Ø¬Ø§Ø¨ØªÙ‡.',
+    );
+  }
+
+  // ============================================================
+  // Ø§Ù„Ù†Ø²ÙˆÙ„ Ø¥Ù„Ù‰ Ø¢Ø®Ø± Ø±Ø³Ø§Ù„Ø©
+  // ============================================================
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!scrollController.hasClients) return;
+
+      scrollController.animateTo(
+        scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  // ============================================================
+  // Ø£Ø²Ø±Ø§Ø± Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯Ø© Ø¨Ø¹Ø¯ Ø¬ÙˆØ§Ø¨ Gemini
+  // ============================================================
+
+  Widget _assistantActions(String answer) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: 8,
+        right: 8,
+        bottom: 14,
+      ),
+      child: Wrap(
+        spacing: 7,
+        runSpacing: 7,
+        children: [
+          ActionChip(
+            avatar: const Icon(
+              Icons.refresh_rounded,
+              size: 18,
+            ),
+            label: const Text('Ø£Ø¹Ø¯ Ø§Ù„Ø´Ø±Ø­'),
+            onPressed: sending
+                ? null
+                : () => repeatExplanation(answer),
+          ),
+          ActionChip(
+            avatar: const Icon(
+              Icons.lightbulb_outline_rounded,
+              size: 18,
+            ),
+            label: const Text('Ø´Ø±Ø­ Ø£Ø¨Ø³Ø·'),
+            onPressed: sending
+                ? null
+                : () => simplifyExplanation(answer),
+          ),
+          ActionChip(
+            avatar: const Icon(
+              Icons.psychology_alt_outlined,
+              size: 18,
+            ),
+            label: const Text('Ø§Ø®ØªØ¨Ø±Ù†ÙŠ'),
+            onPressed: sending
+                ? null
+                : () => makeQuiz(answer),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // ÙÙ‚Ø§Ø¹Ø© Ø§Ù„Ø±Ø³Ø§Ù„Ø©
+  // ============================================================
+
+  Widget _messageBubble(
+      _AssistantMessage message,
+      int index,
+      ) {
+    final isUser = message.isUser;
+
+    return Column(
+      crossAxisAlignment:
+      isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Align(
+          alignment:
+          isUser ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            constraints: const BoxConstraints(
+              maxWidth: 340,
+            ),
+            margin: const EdgeInsets.only(
+              bottom: 6,
+            ),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 15,
+              vertical: 12,
+            ),
+            decoration: BoxDecoration(
+              color: isUser
+                  ? const Color(0xFF2563EB)
+                  : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(18),
+                topRight: const Radius.circular(18),
+                bottomLeft: Radius.circular(
+                  isUser ? 18 : 4,
+                ),
+                bottomRight: Radius.circular(
+                  isUser ? 4 : 18,
+                ),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (message.imageBytes != null)
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: 10,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(
+                        message.imageBytes!,
+                        width: 280,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                if (message.text.isNotEmpty)
+                  Text(
+                    message.text,
+                    textDirection: TextDirection.rtl,
+                    style: TextStyle(
+                      color: isUser
+                          ? Colors.white
+                          : Colors.black87,
+                      height: 1.5,
+                      fontSize: 15,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+
+        if (!isUser && index > 0)
+          _assistantActions(message.text),
+      ],
+    );
+  }
+
+  // ============================================================
+  // Ù…Ø¹Ø§ÙŠÙ†Ø© Ø§Ù„ØµÙˆØ±Ø©
+  // ============================================================
+
+  Widget _selectedImagePreview() {
+    if (selectedImageBytes == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(
+        bottom: 8,
+      ),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.memory(
+              selectedImageBytes!,
+              width: 70,
+              height: 70,
+              fit: BoxFit.cover,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Ø§Ù„ØµÙˆØ±Ø© Ø¬Ø§Ù‡Ø²Ø© Ù„Ù„Ø¥Ø±Ø³Ø§Ù„\nØ§Ø¶ØºØ· Ø¥Ø±Ø³Ø§Ù„ Ø­ØªÙ‰ ÙŠØ­Ù„Ù‡Ø§ Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯.',
+              textDirection: TextDirection.rtl,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: sending ? null : removeSelectedImage,
+            icon: const Icon(
+              Icons.close_rounded,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // ÙˆØ§Ø¬Ù‡Ø© Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯
+  // ============================================================
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯ Ø§Ù„Ø°ÙƒÙŠ',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          actions: const [
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: 12,
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.smart_toy_rounded,
+                  color: Color(0xFFEA580C),
+                ),
+              ),
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  18,
+                  16,
+                  10,
+                ),
+                itemCount: messages.length + (sending ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (sending && index == messages.length) {
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.only(
+                          bottom: 10,
+                        ),
+                        padding: const EdgeInsets.all(13),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return _messageBubble(
+                    messages[index],
+                    index,
+                  );
+                },
+              ),
+            ),
+
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  10,
+                  8,
+                  10,
+                  12,
+                ),
+                child: Column(
+                  children: [
+                    _selectedImagePreview(),
+
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        // Ø§Ù„Ù…Ø¹Ø±Ø¶
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFF8B5CF6),
+                                Color(0xFF6366F1),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.12),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: IconButton(
+                            onPressed:
+                            sending ? null : pickFromGallery,
+                            tooltip: 'Ø§Ø®ØªÙŠØ§Ø± ØµÙˆØ±Ø©',
+                            icon: const Icon(
+                              Icons.photo_library_rounded,
+                              color: Colors.white,
+                              size: 23,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(width: 6),
+
+                        // Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFF0EA5E9),
+                                Color(0xFF2563EB),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.12),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: IconButton(
+                            onPressed:
+                            sending ? null : takePhoto,
+                            tooltip: 'Ø§Ù„ÙƒØ§Ù…ÙŠØ±Ø§',
+                            icon: const Icon(
+                              Icons.camera_alt_rounded,
+                              color: Colors.white,
+                              size: 23,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(width: 6),
+
+                        Expanded(
+                          child: TextField(
+                            controller: controller,
+                            enabled: !sending,
+                            minLines: 1,
+                            maxLines: 4,
+                            textDirection: TextDirection.rtl,
+                            onSubmitted: (_) => send(),
+                            decoration: InputDecoration(
+                              hintText: 'Ø§ÙƒØªØ¨ Ø³Ø¤Ø§Ù„Ùƒ Ù‡Ù†Ø§...',
+                              filled: true,
+                              fillColor: const Color(0xFFF1F5F9),
+                              contentPadding:
+                              const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 13,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius:
+                                BorderRadius.circular(15),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(width: 6),
+
+                        // Ø¥Ø±Ø³Ø§Ù„
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFFEA580C),
+                                Color(0xFFF97316),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.16),
+                                blurRadius: 9,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: IconButton(
+                            onPressed: sending ? null : send,
+                            tooltip: 'Ø¥Ø±Ø³Ø§Ù„',
+                            icon: const Icon(
+                              Icons.send_rounded,
+                              color: Colors.white,
+                              size: 23,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Ø§Ù„Ù…Ø²ÙŠØ¯
+// ============================================================
+
+class MorePage extends StatelessWidget {
+  const MorePage({super.key});
+
+  Future<void> _open(BuildContext context, Widget page) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => page),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        const Text(
+          'Ø§Ù„Ù…Ø²ÙŠØ¯',
+          style: TextStyle(fontSize: 27, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Ø¥Ø¯Ø§Ø±Ø© Ø­Ø³Ø§Ø¨Ùƒ ÙˆØ¥Ø¹Ø¯Ø§Ø¯Ø§Øª Ø§Ù„ØªØ·Ø¨ÙŠÙ‚',
+          style: TextStyle(color: Colors.black54),
+        ),
+        const SizedBox(height: 18),
+        Card(
+          elevation: 0,
+          child: ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.person)),
+            title: const Text('Ù…Ù„ÙÙŠ Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠ'),
+            subtitle: const Text('Ø§Ù„Ø§Ø³Ù… ÙˆØ§Ù„ØµÙ ÙˆØ§Ù„Ù…Ø±Ø­Ù„Ø©'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () => _open(context, const StudentProfileViewPage()),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          elevation: 0,
+          child: ListTile(
+            leading: const Icon(Icons.settings_outlined),
+            title: const Text('Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª'),
+            subtitle: const Text('Ø§Ù„Ø§Ø³Ù…ØŒ Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„ØŒ Ø§Ù„Ø±Ù…Ø² ÙˆØ­Ø¬Ù… Ø§Ù„ÙˆØ§Ø¬Ù‡Ø©'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () => _open(context, const SettingsPage()),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          elevation: 0,
+          child: ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('Ø¹Ù† Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ ÙˆØ§Ù„Ø­Ù‚ÙˆÙ‚'),
+            subtitle: const Text('Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ ÙˆØ·Ø±Ù‚ Ø§Ù„ØªÙˆØ§ØµÙ„'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () => _open(context, const AboutAppPage()),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class StudentProfileViewPage extends StatelessWidget {
+  const StudentProfileViewPage({super.key});
+
+  Future<Map<String, String>> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      'name': prefs.getString('student_name') ?? 'ØºÙŠØ± Ù…Ø­Ø¯Ø¯',
+      'email': prefs.getString('student_email') ?? 'ØºÙŠØ± Ù…Ø­Ø¯Ø¯',
+      'stage': prefs.getString('student_stage') ?? 'ØºÙŠØ± Ù…Ø­Ø¯Ø¯',
+      'grade': prefs.getString('student_grade') ?? 'ØºÙŠØ± Ù…Ø­Ø¯Ø¯',
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Ù…Ù„ÙÙŠ Ø§Ù„Ø¯Ø±Ø§Ø³ÙŠ')),
+        body: FutureBuilder<Map<String, String>>(
+          future: _load(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final data = snapshot.data!;
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                const CircleAvatar(
+                  radius: 48,
+                  child: Icon(Icons.person, size: 52),
+                ),
+                const SizedBox(height: 18),
+                _infoTile(Icons.person_outline, 'Ø§Ù„Ø§Ø³Ù…', data['name']!),
+                _infoTile(Icons.email_outlined, 'Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„', data['email']!),
+                _infoTile(Icons.school_outlined, 'Ø§Ù„Ù…Ø±Ø­Ù„Ø©', data['stage'] == 'primary' ? 'Ø§Ù„Ù…Ø±Ø­Ù„Ø© Ø§Ù„Ø§Ø¨ØªØ¯Ø§Ø¦ÙŠØ©' : 'Ø§Ù„Ù…Ø±Ø­Ù„Ø© Ø§Ù„Ù…ØªÙˆØ³Ø·Ø©'),
+                _infoTile(Icons.menu_book_outlined, 'Ø§Ù„ØµÙ', data['grade']!),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _infoTile(IconData icon, String title, String value) {
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+}
+
+class SettingsPage extends StatefulWidget {
+  const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  double scale = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    scale = uiScaleNotifier.value;
+  }
+
+  Future<void> _setScale(double value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('ui_scale', value);
+    uiScaleNotifier.value = value;
+    setState(() => scale = value);
+  }
+
+  Future<void> _editAccount() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const EditAccountPage()),
+    );
+  }
+
+  Future<void> _logout() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø®Ø±ÙˆØ¬'),
+        content: const Text('Ù‡Ù„ ØªØ±ÙŠØ¯ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø®Ø±ÙˆØ¬ Ù…Ù† Ø§Ù„Ø­Ø³Ø§Ø¨ØŸ'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Ø¥Ù„ØºØ§Ø¡')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Ø®Ø±ÙˆØ¬')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('auth_token');
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+          (_) => false,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª')),
+        body: ListView(
+          padding: const EdgeInsets.all(18),
+          children: [
+            Card(
+              elevation: 0,
+              child: ListTile(
+                leading: const Icon(Icons.manage_accounts_outlined),
+                title: const Text('Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø­Ø³Ø§Ø¨'),
+                subtitle: const Text('ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ø§Ø³Ù… Ø£Ùˆ Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„ Ø£Ùˆ Ø§Ù„Ø±Ù…Ø²'),
+                trailing: const Icon(Icons.chevron_left),
+                onTap: _editAccount,
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text('Ø­Ø¬Ù… Ø§Ù„ÙˆØ§Ø¬Ù‡Ø§Øª', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Card(
+              elevation: 0,
+              child: Column(
+                children: [
+                  RadioListTile<double>(value: 0.9, groupValue: scale, onChanged: (v) { if (v != null) _setScale(v); }, title: const Text('ØµØºÙŠØ±')),
+                  RadioListTile<double>(value: 1.0, groupValue: scale, onChanged: (v) { if (v != null) _setScale(v); }, title: const Text('Ø·Ø¨ÙŠØ¹ÙŠ')),
+                  RadioListTile<double>(value: 1.15, groupValue: scale, onChanged: (v) { if (v != null) _setScale(v); }, title: const Text('ÙƒØ¨ÙŠØ±')),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            Card(
+              elevation: 0,
+              child: ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('Ø¹Ù† Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ ÙˆØ§Ù„Ø­Ù‚ÙˆÙ‚'),
+                trailing: const Icon(Icons.chevron_left),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutAppPage())),
+              ),
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: _logout,
+              icon: const Icon(Icons.logout),
+              label: const Text('ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø®Ø±ÙˆØ¬'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class EditAccountPage extends StatefulWidget {
+  const EditAccountPage({super.key});
+
+  @override
+  State<EditAccountPage> createState() => _EditAccountPageState();
+}
+
+class _EditAccountPageState extends State<EditAccountPage> {
+  final nameController = TextEditingController();
+  final emailController = TextEditingController();
+  final currentPasswordController = TextEditingController();
+  final newPasswordController = TextEditingController();
+  final confirmPasswordController = TextEditingController();
+  bool loading = false;
+  bool obscureCurrent = true;
+  bool obscureNew = true;
+  bool obscureConfirm = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final prefs = await SharedPreferences.getInstance();
+    nameController.text = prefs.getString('student_name') ?? '';
+    emailController.text = prefs.getString('student_email') ?? '';
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    emailController.dispose();
+    currentPasswordController.dispose();
+    newPasswordController.dispose();
+    confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  void _show(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _save() async {
+    final name = nameController.text.trim();
+    final email = emailController.text.trim().toLowerCase();
+    final currentPassword = currentPasswordController.text;
+    final newPassword = newPasswordController.text;
+
+    if (name.split(RegExp(r'\s+')).length < 3) {
+      _show('Ø§ÙƒØªØ¨ Ø§Ù„Ø§Ø³Ù… Ø§Ù„Ø«Ù„Ø§Ø«ÙŠ');
+      return;
+    }
+    if (!email.contains('@') || !email.contains('.')) {
+      _show('Ø§ÙƒØªØ¨ Ø¥ÙŠÙ…ÙŠÙ„ ØµØ­ÙŠØ­');
+      return;
+    }
+    if (currentPassword.isEmpty) {
+      _show('Ø§ÙƒØªØ¨ Ø§Ù„Ø±Ù…Ø² Ø§Ù„Ø­Ø§Ù„ÙŠ Ù„Ù„ØªØ£ÙƒÙŠØ¯');
+      return;
+    }
+    if (newPassword.isNotEmpty && newPassword.length < 6) {
+      _show('Ø§Ù„Ø±Ù…Ø² Ø§Ù„Ø¬Ø¯ÙŠØ¯ ÙŠØ¬Ø¨ Ø£Ù† ÙŠÙƒÙˆÙ† 6 Ø£Ø­Ø±Ù Ø£Ùˆ Ø£Ø±Ù‚Ø§Ù… Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„');
+      return;
+    }
+    if (newPassword != confirmPasswordController.text) {
+      _show('Ø§Ù„Ø±Ù…Ø²Ø§Ù† Ø§Ù„Ø¬Ø¯ÙŠØ¯Ø§Ù† ØºÙŠØ± Ù…ØªØ·Ø§Ø¨Ù‚ÙŠÙ†');
+      return;
+    }
+
+    setState(() => loading = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final oldEmail = prefs.getString('student_email') ?? '';
+      final response = await http.post(
+        Uri.parse('$authBaseUrl/auth/update-profile'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': oldEmail,
+          'currentPassword': currentPassword,
+          'newFullName': name,
+          'newEmail': email,
+          'newPassword': newPassword.isEmpty ? null : newPassword,
+        }),
+      ).timeout(const Duration(seconds: 30));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success'] == true) {
+        final user = data['user'];
+        await prefs.setString('student_name', user['fullName'].toString());
+        await prefs.setString('student_email', user['email'].toString());
+        await prefs.setString('student_stage', user['stage'].toString());
+        await prefs.setString('student_grade', user['grade'].toString());
+        if (!mounted) return;
+        _show('ØªÙ… Ø­ÙØ¸ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø­Ø³Ø§Ø¨ Ø¨Ù†Ø¬Ø§Ø­');
+        Navigator.pop(context);
+      } else {
+        _show(data['error']?.toString() ?? 'ØªØ¹Ø°Ø± Ø­ÙØ¸ Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª');
+      }
+    } catch (e) {
+      debugPrint('Update profile error: $e');
+      _show('ØªØ¹Ø°Ø± Ø§Ù„Ø§ØªØµØ§Ù„ Ø¨Ø§Ù„Ø³ÙŠØ±ÙØ±');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('ØªØ¹Ø¯ÙŠÙ„ Ø§Ù„Ø­Ø³Ø§Ø¨')),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Ø§Ù„Ø§Ø³Ù… Ø§Ù„Ø«Ù„Ø§Ø«ÙŠ', prefixIcon: Icon(Icons.person_outline), border: OutlineInputBorder())),
+              const SizedBox(height: 14),
+              TextField(controller: emailController, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Ø§Ù„Ø¥ÙŠÙ…ÙŠÙ„', prefixIcon: Icon(Icons.email_outlined), border: OutlineInputBorder())),
+              const SizedBox(height: 22),
+              const Align(alignment: Alignment.centerRight, child: Text('Ù„Ù„ØªØ£ÙƒÙŠØ¯ Ø§ÙƒØªØ¨ Ø§Ù„Ø±Ù…Ø² Ø§Ù„Ø­Ø§Ù„ÙŠ', style: TextStyle(fontWeight: FontWeight.bold))),
+              const SizedBox(height: 10),
+              TextField(controller: currentPasswordController, obscureText: obscureCurrent, decoration: InputDecoration(labelText: 'Ø§Ù„Ø±Ù…Ø² Ø§Ù„Ø­Ø§Ù„ÙŠ', prefixIcon: const Icon(Icons.lock_outline), border: const OutlineInputBorder(), suffixIcon: IconButton(onPressed: () => setState(() => obscureCurrent = !obscureCurrent), icon: Icon(obscureCurrent ? Icons.visibility : Icons.visibility_off)))),
+              const SizedBox(height: 22),
+              const Align(alignment: Alignment.centerRight, child: Text('Ø¥Ø°Ø§ ØªØ±ÙŠØ¯ ØªØºÙŠÙŠØ± Ø§Ù„Ø±Ù…Ø² ÙÙ‚Ø·', style: TextStyle(fontWeight: FontWeight.bold))),
+              const SizedBox(height: 10),
+              TextField(controller: newPasswordController, obscureText: obscureNew, decoration: InputDecoration(labelText: 'Ø§Ù„Ø±Ù…Ø² Ø§Ù„Ø¬Ø¯ÙŠØ¯ (Ø§Ø®ØªÙŠØ§Ø±ÙŠ)', prefixIcon: const Icon(Icons.password_outlined), border: const OutlineInputBorder(), suffixIcon: IconButton(onPressed: () => setState(() => obscureNew = !obscureNew), icon: Icon(obscureNew ? Icons.visibility : Icons.visibility_off)))),
+              const SizedBox(height: 14),
+              TextField(controller: confirmPasswordController, obscureText: obscureConfirm, decoration: InputDecoration(labelText: 'ØªØ£ÙƒÙŠØ¯ Ø§Ù„Ø±Ù…Ø² Ø§Ù„Ø¬Ø¯ÙŠØ¯', prefixIcon: const Icon(Icons.password_outlined), border: const OutlineInputBorder(), suffixIcon: IconButton(onPressed: () => setState(() => obscureConfirm = !obscureConfirm), icon: Icon(obscureConfirm ? Icons.visibility : Icons.visibility_off)))),
+              const SizedBox(height: 26),
+              SizedBox(width: double.infinity, height: 54, child: FilledButton(onPressed: loading ? null : _save, child: loading ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2) : const Text('Ø­ÙØ¸ Ø§Ù„ØªØ¹Ø¯ÙŠÙ„Ø§Øª', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)))),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class AboutAppPage extends StatelessWidget {
+  const AboutAppPage({super.key});
+
+  void _copy(BuildContext context, String text, String message) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Ø¹Ù† Ø§Ù„ØªØ·Ø¨ÙŠÙ‚ ÙˆØ§Ù„Ø­Ù‚ÙˆÙ‚')),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            const CircleAvatar(radius: 46, child: Icon(Icons.school_rounded, size: 50)),
+            const SizedBox(height: 15),
+            const Center(child: Text('Ù…Ø³Ø§Ø¹Ø¯ Ø§Ù„Ø·Ø§Ù„Ø¨ Ø§Ù„Ø¹Ø±Ø§Ù‚ÙŠ', style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold))),
+            const SizedBox(height: 8),
+            const Center(child: Text('ØªØ·Ø¨ÙŠÙ‚ ØªØ¹Ù„ÙŠÙ…ÙŠ Ù„Ù…Ø³Ø§Ø¹Ø¯Ø© Ø§Ù„Ø·Ù„Ø¨Ø© Ø§Ù„Ø¹Ø±Ø§Ù‚ÙŠÙŠÙ†', textAlign: TextAlign.center)),
+            const SizedBox(height: 24),
+            Card(
+              elevation: 0,
+              child: ListTile(
+                leading: const Icon(Icons.phone_android),
+                title: const Text('Ø±Ù‚Ù… Ø§Ù„Ø­Ù‚ÙˆÙ‚ ÙˆØ§Ù„ØªÙˆØ§ØµÙ„'),
+                subtitle: const SelectableText('9647718245095'),
+                trailing: IconButton(icon: const Icon(Icons.copy), onPressed: () => _copy(context, '9647718245095', 'ØªÙ… Ù†Ø³Ø® Ø§Ù„Ø±Ù‚Ù…')),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Card(
+              elevation: 0,
+              child: ListTile(
+                leading: const Icon(Icons.telegram),
+                title: const Text('Ø­Ø³Ø§Ø¨ Ø§Ù„ØªÙ„ÙŠÚ¯Ø±Ø§Ù…'),
+                subtitle: const SelectableText('@malaa95'),
+                trailing: IconButton(icon: const Icon(Icons.copy), onPressed: () => _copy(context, '@malaa95', 'ØªÙ… Ù†Ø³Ø® Ø­Ø³Ø§Ø¨ Ø§Ù„ØªÙ„ÙŠÚ¯Ø±Ø§Ù…')),
+              ),
+            ),
+            const SizedBox(height: 22),
+            const Text('Ø§Ù„Ø¥ØµØ¯Ø§Ø±', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            const Text('Ù…Ø³Ø§Ø¹Ø¯ Ø§Ù„Ø·Ø§Ù„Ø¨ Ø§Ù„Ø¹Ø±Ø§Ù‚ÙŠ'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Widgets
+// ============================================================
+
+class _HomeTool extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _HomeTool({
+    required this.icon,
+    required this.title,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFFE2E8F0),
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment:
+          MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: color,
+              size: 35,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeworkItem extends StatelessWidget {
+  final String subject;
+  final String title;
+  final String dueDate;
+  final bool completed;
+  final ValueChanged<bool?> onChanged;
+  final VoidCallback onDelete;
+
+  const _HomeworkItem({
+    required this.subject,
+    required this.title,
+    required this.dueDate,
+    required this.completed,
+    required this.onChanged,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(
+          color: Color(0xFFE2E8F0),
+        ),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 7,
+        ),
+        leading: CircleAvatar(
+          backgroundColor: completed
+              ? const Color(0xFFDCFCE7)
+              : const Color(0xFFEFF6FF),
+          child: Icon(
+            completed
+                ? Icons.check
+                : Icons.assignment_outlined,
+            color: completed
+                ? const Color(0xFF16A34A)
+                : const Color(0xFF2563EB),
+          ),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            decoration:
+            completed ? TextDecoration.lineThrough : null,
+            color: completed ? Colors.grey : null,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 5),
+          child: Text(
+            dueDate.isEmpty
+                ? subject
+                : '$subject  â€¢  Ø§Ù„ØªØ³Ù„ÙŠÙ…: $dueDate',
+            style: const TextStyle(
+              color: Colors.grey,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Checkbox(
+              value: completed,
+              onChanged: onChanged,
+            ),
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'delete') {
+                  onDelete();
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem<String>(
+                  value: 'delete',
+                  child: Text('Ø­Ø°Ù Ø§Ù„ÙˆØ§Ø¬Ø¨'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class BookViewerPage extends StatefulWidget {
+  final String title;
+  final String assetPath;
+
+  const BookViewerPage({
+    super.key,
+    required this.title,
+    required this.assetPath,
+  });
+
+  @override
+  State<BookViewerPage> createState() => _BookViewerPageState();
+}
+
+class _BookViewerPageState extends State<BookViewerPage> {
+  Uint8List? pdfBytes;
+  String? errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBook();
+  }
+
+  Future<void> _loadBook() async {
+    try {
+      final data = await rootBundle.load(widget.assetPath);
+      if (!mounted) return;
+      setState(() {
+        pdfBytes = data.buffer.asUint8List();
+        errorMessage = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        errorMessage = 'Ù…Ø³Ø§Ø± Ø§Ù„ÙƒØªØ§Ø¨:\n${widget.assetPath}\n\nØ§Ù„Ø®Ø·Ø£:\n$e';
+      });
+    }
+  }
+
+  Future<void> _printBook() async {
+    final bytes = pdfBytes;
+    if (bytes == null) return;
+    await Printing.layoutPdf(onLayout: (_) async => bytes);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.print),
+            tooltip: 'Ø·Ø¨Ø§Ø¹Ø© Ø§Ù„ÙƒØªØ§Ø¨',
+            onPressed: pdfBytes == null ? null : _printBook,
+          ),
+        ],
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text('ØªØ¹Ø°Ø± ÙØªØ­ Ø§Ù„ÙƒØªØ§Ø¨\n\n$errorMessage', textAlign: TextAlign.center),
+        ),
+      );
+    }
+    if (pdfBytes == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return SfPdfViewer.memory(pdfBytes!);
+  }
+}
+
+class QuizQuestion {
+  final String question;
+  final List<String> options;
+  final int correctAnswer;
+
+  const QuizQuestion({
+    required this.question,
+    required this.options,
+    required this.correctAnswer,
+  });
+}
+
+class QuizPage extends StatefulWidget {
+  const QuizPage({super.key});
+
+  @override
+  State<QuizPage> createState() => _QuizPageState();
+}
+
+class _QuizPageState extends State<QuizPage> {
+  static const List<QuizQuestion> questions = [
+    // Ø±ÙŠØ§Ø¶ÙŠØ§Øª
+    QuizQuestion(
+      question: 'ÙƒÙ… Ù†Ø§ØªØ¬ 5 + 3 ØŸ',
+      options: ['6', '7', '8', '9'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ù†Ø§ØªØ¬ 10 - 4 ØŸ',
+      options: ['4', '5', '6', '7'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ù†Ø§ØªØ¬ 7 + 6 ØŸ',
+      options: ['11', '12', '13', '14'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ù†Ø§ØªØ¬ 15 - 7 ØŸ',
+      options: ['6', '7', '8', '9'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø¹Ø¯Ø¯ Ø£ÙƒØ¨Ø±ØŸ',
+      options: ['12', '18', '9', '15'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø¹Ø¯Ø¯ Ø²ÙˆØ¬ÙŠØŸ',
+      options: ['3', '5', '8', '11'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ù„Ø¹Ø¯Ø¯ Ø§Ù„Ø°ÙŠ ÙŠØ£ØªÙŠ Ø¨Ø¹Ø¯ 29ØŸ',
+      options: ['28', '30', '31', '27'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ù„Ø¹Ø¯Ø¯ Ø§Ù„Ø°ÙŠ ÙŠØ£ØªÙŠ Ù‚Ø¨Ù„ 50ØŸ',
+      options: ['48', '49', '51', '52'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø¶Ù„Ø¹Ø§Ù‹ Ù„Ù„Ù…Ø±Ø¨Ø¹ØŸ',
+      options: ['3', '4', '5', '6'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø¶Ù„Ø¹Ø§Ù‹ Ù„Ù„Ù…Ø«Ù„Ø«ØŸ',
+      options: ['2', '3', '4', '5'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø¹Ø¯Ø¯ Ù‡Ùˆ Ø§Ù„Ø£ØµØºØ±ØŸ',
+      options: ['21', '12', '18', '20'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… ÙŠØ³Ø§ÙˆÙŠ 20 + 10ØŸ',
+      options: ['20', '25', '30', '35'],
+      correctAnswer: 2,
+    ),
+
+    // Ø§Ù„Ù„ØºØ© Ø§Ù„Ø¹Ø±Ø¨ÙŠØ©
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø¹ÙƒØ³ ÙƒÙ„Ù…Ø© Â«ÙƒØ¨ÙŠØ±Â»ØŸ',
+      options: ['Ø·ÙˆÙŠÙ„', 'ØµØºÙŠØ±', 'Ø³Ø±ÙŠØ¹', 'Ø¬Ù…ÙŠÙ„'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø¬Ù…Ø¹ ÙƒÙ„Ù…Ø© Â«ÙƒØªØ§Ø¨Â»ØŸ',
+      options: ['ÙƒØ§ØªØ¨', 'ÙƒØªØ¨', 'Ù…ÙƒØªØ¨Ø©', 'ÙƒØªØ§Ø¨Ø§Ù†'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ ÙƒÙ„Ù…Ø© Ø§Ø³Ù…ØŸ',
+      options: ['ÙŠÙƒØªØ¨', 'Ù…Ø¯Ø±Ø³Ø©', 'Ø°Ù‡Ø¨', 'Ø§Ø¬Ù„Ø³'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ ÙƒÙ„Ù…Ø© ÙØ¹Ù„ØŸ',
+      options: ['Ù‚Ù„Ù…', 'Ø¨ÙŠØª', 'ÙŠÙ‚Ø±Ø£', 'Ù…Ø¯Ø±Ø³Ø©'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ ÙƒÙ„Ù…Ø© ØªØ¯Ù„ Ø¹Ù„Ù‰ Ø´Ø®ØµØŸ',
+      options: ['Ø·Ø§ÙˆÙ„Ø©', 'Ø·Ø§Ù„Ø¨', 'ÙƒØªØ§Ø¨', 'Ø¨Ø§Ø¨'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ù…ÙØ±Ø¯ ÙƒÙ„Ù…Ø© Â«Ø·Ù„Ø§Ø¨Â»ØŸ',
+      options: ['Ø·Ø§Ù„Ø¨', 'Ø·Ù„Ø¨', 'Ø·Ø§Ù„Ø¨Ø©', 'Ø·Ù„Ø§Ø¨Ø§Ù†'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø­Ø±Ù ÙŠØ£ØªÙŠ Ø¨Ø¹Ø¯ Ø­Ø±Ù Â«Ø¨Â»ØŸ',
+      options: ['Ø§', 'Øª', 'Ø«', 'Ø¬'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ ÙƒÙ„Ù…Ø© ØªØ¨Ø¯Ø£ Ø¨Ø­Ø±Ù Â«Ù…Â»ØŸ',
+      options: ['ÙƒØªØ§Ø¨', 'Ù…Ø¯Ø±Ø³Ø©', 'Ø¨ÙŠØª', 'Ù‚Ù„Ù…'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ ÙƒÙ„Ù…Ø© ØªÙ†ØªÙ‡ÙŠ Ø¨Ø­Ø±Ù Â«Ø©Â»ØŸ',
+      options: ['Ù…Ø¯Ø±Ø³Ø©', 'Ù‚Ù„Ù…', 'ÙƒØªØ§Ø¨', 'Ø¨Ø§Ø¨'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø¶Ø¯ ÙƒÙ„Ù…Ø© Â«Ø³Ø±ÙŠØ¹Â»ØŸ',
+      options: ['Ù‚ÙˆÙŠ', 'Ø¨Ø·ÙŠØ¡', 'ÙƒØ¨ÙŠØ±', 'Ù‚Ø±ÙŠØ¨'],
+      correctAnswer: 1,
+    ),
+
+    // Ø§Ù„Ø¹Ù„ÙˆÙ…
+    QuizQuestion(
+      question: 'Ø£ÙŠ ÙˆØ§Ø­Ø¯ Ù…Ù† Ø§Ù„Ø¢ØªÙŠ Ù…Ù† Ø§Ù„ÙƒØ§Ø¦Ù†Ø§Øª Ø§Ù„Ø­ÙŠØ©ØŸ',
+      options: ['Ø§Ù„Ø­Ø¬Ø±', 'Ø§Ù„ÙƒØªØ§Ø¨', 'Ø§Ù„Ù†Ø¨Ø§Øª', 'Ø§Ù„Ù‚Ù„Ù…'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§Ø°Ø§ ÙŠØ­ØªØ§Ø¬ Ø§Ù„Ù†Ø¨Ø§Øª Ù„ÙƒÙŠ ÙŠÙ†Ù…ÙˆØŸ',
+      options: ['Ø§Ù„Ù…Ø§Ø¡ ÙˆØ§Ù„Ø¶ÙˆØ¡', 'Ø§Ù„Ø­Ø¬Ø±', 'Ø§Ù„Ø­Ø¯ÙŠØ¯ ÙÙ‚Ø·', 'Ø§Ù„Ø¸Ù„Ø§Ù…'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ù„Ø¹Ø¶Ùˆ Ø§Ù„Ø°ÙŠ Ù†Ø³ØªØ®Ø¯Ù…Ù‡ Ù„Ù„Ø±Ø¤ÙŠØ©ØŸ',
+      options: ['Ø§Ù„Ø£Ø°Ù†', 'Ø§Ù„Ø¹ÙŠÙ†', 'Ø§Ù„ÙŠØ¯', 'Ø§Ù„Ø£Ù†Ù'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ù„Ø¹Ø¶Ùˆ Ø§Ù„Ø°ÙŠ Ù†Ø³ØªØ®Ø¯Ù…Ù‡ Ù„Ù„Ø³Ù…Ø¹ØŸ',
+      options: ['Ø§Ù„Ø¹ÙŠÙ†', 'Ø§Ù„Ø£Ø°Ù†', 'Ø§Ù„ÙÙ…', 'Ø§Ù„Ù‚Ø¯Ù…'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø­Ø§Ù„Ø© Ù…Ù† Ø­Ø§Ù„Ø§Øª Ø§Ù„Ù…Ø§Ø¡ ØªÙƒÙˆÙ† ØµÙ„Ø¨Ø©ØŸ',
+      options: ['Ø§Ù„Ø¨Ø®Ø§Ø±', 'Ø§Ù„Ù…Ø§Ø¡', 'Ø§Ù„Ø«Ù„Ø¬', 'Ø§Ù„Ù…Ø·Ø±'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ù…ØµØ¯Ø± Ø§Ù„Ø¶ÙˆØ¡ Ø§Ù„Ø·Ø¨ÙŠØ¹ÙŠØŸ',
+      options: ['Ø§Ù„Ø´Ù…Ø³', 'Ø§Ù„Ù‚Ù„Ù…', 'Ø§Ù„ÙƒØªØ§Ø¨', 'Ø§Ù„ÙƒØ±Ø³ÙŠ'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø­ÙŠÙˆØ§Ù† ÙŠØ¶Ø¹ Ø§Ù„Ø¨ÙŠØ¶ØŸ',
+      options: ['Ø§Ù„Ø¯Ø¬Ø§Ø¬Ø©', 'Ø§Ù„Ù‚Ø·Ø©', 'Ø§Ù„Ø¨Ù‚Ø±Ø©', 'Ø§Ù„Ø­ØµØ§Ù†'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø­Ø§Ø³Ø© Ù†Ø³ØªØ®Ø¯Ù…Ù‡Ø§ Ù„Ù…Ø¹Ø±ÙØ© Ø§Ù„Ø±Ø§Ø¦Ø­Ø©ØŸ',
+      options: ['Ø§Ù„Ø³Ù…Ø¹', 'Ø§Ù„Ø¨ØµØ±', 'Ø§Ù„Ø´Ù…', 'Ø§Ù„Ù„Ù…Ø³'],
+      correctAnswer: 2,
+    ),
+
+    // Ø§Ù„ØªØ±Ø¨ÙŠØ© Ø§Ù„Ø¥Ø³Ù„Ø§Ù…ÙŠØ©
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø¹Ø¯Ø¯ Ø§Ù„ØµÙ„ÙˆØ§Øª Ø§Ù„Ù…ÙØ±ÙˆØ¶Ø© ÙÙŠ Ø§Ù„ÙŠÙˆÙ…ØŸ',
+      options: ['3', '4', '5', '6'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø£ÙˆÙ„ Ø£Ø±ÙƒØ§Ù† Ø§Ù„Ø¥Ø³Ù„Ø§Ù…ØŸ',
+      options: ['Ø§Ù„ØµÙ„Ø§Ø©', 'Ø§Ù„Ø´Ù‡Ø§Ø¯ØªØ§Ù†', 'Ø§Ù„Ø²ÙƒØ§Ø©', 'Ø§Ù„ØµÙˆÙ…'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'ÙÙŠ Ø£ÙŠ Ø´Ù‡Ø± ÙŠØµÙˆÙ… Ø§Ù„Ù…Ø³Ù„Ù…ÙˆÙ†ØŸ',
+      options: ['Ù…Ø­Ø±Ù…', 'Ø±Ù…Ø¶Ø§Ù†', 'Ø´ÙˆØ§Ù„', 'Ø±Ø¬Ø¨'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ù„ÙƒØªØ§Ø¨ Ø§Ù„Ø°ÙŠ Ø£Ù†Ø²Ù„Ù‡ Ø§Ù„Ù„Ù‡ Ø¹Ù„Ù‰ Ø§Ù„Ù†Ø¨ÙŠ Ù…Ø­Ù…Ø¯ ï·ºØŸ',
+      options: ['Ø§Ù„Ù‚Ø±Ø¢Ù† Ø§Ù„ÙƒØ±ÙŠÙ…', 'Ø§Ù„Ø¥Ù†Ø¬ÙŠÙ„', 'Ø§Ù„ØªÙˆØ±Ø§Ø©', 'Ø§Ù„Ø²Ø¨ÙˆØ±'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Ø¥Ù„Ù‰ Ø£ÙŠÙ† ÙŠØªÙˆØ¬Ù‡ Ø§Ù„Ù…Ø³Ù„Ù…ÙˆÙ† ÙÙŠ Ø§Ù„ØµÙ„Ø§Ø©ØŸ',
+      options: ['Ø§Ù„Ù…Ø¯ÙŠÙ†Ø©', 'Ø§Ù„ÙƒØ¹Ø¨Ø©', 'Ø§Ù„Ù‚Ø¯Ø³', 'Ø§Ù„Ø¨ØµØ±Ø©'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ø³Ù… Ø§Ù„ØµÙ„Ø§Ø© Ø§Ù„ØªÙŠ ØªØ¤Ø¯Ù‰ Ø¹Ù†Ø¯ Ø§Ù„ÙØ¬Ø±ØŸ',
+      options: ['Ø§Ù„Ø¹Ø´Ø§Ø¡', 'Ø§Ù„Ù…ØºØ±Ø¨', 'Ø§Ù„ÙØ¬Ø±', 'Ø§Ù„Ø¸Ù‡Ø±'],
+      correctAnswer: 2,
+    ),
+
+    // Ø§Ù„Ù„ØºØ© Ø§Ù„Ø¥Ù†ÙƒÙ„ÙŠØ²ÙŠØ©
+    QuizQuestion(
+      question: 'What is the meaning of "book"?',
+      options: ['ÙƒØªØ§Ø¨', 'Ù‚Ù„Ù…', 'Ø¨Ø§Ø¨', 'Ø¨ÙŠØª'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'What is the meaning of "school"?',
+      options: ['Ù…Ø¯Ø±Ø³Ø©', 'Ø³ÙŠØ§Ø±Ø©', 'Ø­Ø¯ÙŠÙ‚Ø©', 'Ù…Ø§Ø¡'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Choose the correct word: I ___ a student.',
+      options: ['am', 'is', 'are', 'be'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'What comes after the letter B?',
+      options: ['A', 'C', 'D', 'E'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'What is the opposite of "big"?',
+      options: ['small', 'long', 'fast', 'hot'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'What is the meaning of "cat"?',
+      options: ['ÙƒÙ„Ø¨', 'Ù‚Ø·Ø©', 'Ø­ØµØ§Ù†', 'Ø·Ø§Ø¦Ø±'],
+      correctAnswer: 1,
+    ),
+
+    // Ø£Ø³Ø¦Ù„Ø© Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø¹Ø§Ù…Ø© Ø¨Ù†Ù…Ø· Ù…Ø³Ø§Ø¨Ù‚Ø§Øª "Ù…Ù† Ø³ÙŠØ±Ø¨Ø­ Ø§Ù„Ù…Ù„ÙŠÙˆÙ†"
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø£ÙƒØ¨Ø± Ù‚Ø§Ø±Ø© ÙÙŠ Ø§Ù„Ø¹Ø§Ù„Ù… Ù…Ù† Ø­ÙŠØ« Ø§Ù„Ù…Ø³Ø§Ø­Ø©ØŸ',
+      options: ['Ø£ÙØ±ÙŠÙ‚ÙŠØ§', 'Ø¢Ø³ÙŠØ§', 'Ø£ÙˆØ±ÙˆØ¨Ø§', 'Ø£Ø³ØªØ±Ø§Ù„ÙŠØ§'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø£ÙƒØ¨Ø± Ù…Ø­ÙŠØ· ÙÙŠ Ø§Ù„Ø¹Ø§Ù„Ù…ØŸ',
+      options: ['Ø§Ù„Ø£Ø·Ù„Ø³ÙŠ', 'Ø§Ù„Ù‡Ù†Ø¯ÙŠ', 'Ø§Ù„Ù‡Ø§Ø¯Ø¦', 'Ø§Ù„Ù…ØªØ¬Ù…Ø¯ Ø§Ù„Ø´Ù…Ø§Ù„ÙŠ'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø¹Ø¯Ø¯ Ø£Ù„ÙˆØ§Ù† Ù‚ÙˆØ³ Ù‚Ø²Ø­ØŸ',
+      options: ['5', '6', '7', '8'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø­ÙŠÙˆØ§Ù† ÙŠÙØ¹Ø±Ù Ø¨Ø³ÙÙŠÙ†Ø© Ø§Ù„ØµØ­Ø±Ø§Ø¡ØŸ',
+      options: ['Ø§Ù„Ø­ØµØ§Ù†', 'Ø§Ù„Ø¬Ù…Ù„', 'Ø§Ù„ÙÙŠÙ„', 'Ø§Ù„ØºØ²Ø§Ù„'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø£Ø³Ø±Ø¹ Ø­ÙŠÙˆØ§Ù† Ø¨Ø±ÙŠØŸ',
+      options: ['Ø§Ù„Ø£Ø³Ø¯', 'Ø§Ù„ÙÙ‡Ø¯', 'Ø§Ù„Ø­ØµØ§Ù†', 'Ø§Ù„Ù†Ù…Ø±'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ù„ØºØ§Ø² Ø§Ù„Ø°ÙŠ ÙŠØ­ØªØ§Ø¬Ù‡ Ø§Ù„Ø¥Ù†Ø³Ø§Ù† Ù„Ù„ØªÙ†ÙØ³ØŸ',
+      options: ['Ø§Ù„Ø£ÙƒØ³Ø¬ÙŠÙ†', 'Ø§Ù„Ù‡ÙŠØ¯Ø±ÙˆØ¬ÙŠÙ†', 'Ø§Ù„Ù‡ÙŠÙ„ÙŠÙˆÙ…', 'Ø§Ù„Ù†ÙŠØªØ±ÙˆØ¬ÙŠÙ†'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ù„ÙƒÙˆÙƒØ¨ Ø§Ù„Ù…Ø¹Ø±ÙˆÙ Ø¨Ø§Ù„ÙƒÙˆÙƒØ¨ Ø§Ù„Ø£Ø­Ù…Ø±ØŸ',
+      options: ['Ø§Ù„Ø²Ù‡Ø±Ø©', 'Ø§Ù„Ù…Ø±ÙŠØ®', 'Ø²Ø­Ù„', 'Ù†Ø¨ØªÙˆÙ†'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø¹Ø¯Ø¯ Ø£Ø¶Ù„Ø§Ø¹ Ø§Ù„Ø´ÙƒÙ„ Ø§Ù„Ø³Ø¯Ø§Ø³ÙŠØŸ',
+      options: ['5', '6', '7', '8'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ù„Ø­ÙŠÙˆØ§Ù† Ø§Ù„Ø°ÙŠ ÙŠÙØ¹Ø¯ Ø£ÙƒØ¨Ø± Ø­ÙŠÙˆØ§Ù† Ø¹Ù„Ù‰ ÙˆØ¬Ù‡ Ø§Ù„Ø£Ø±Ø¶ØŸ',
+      options: ['Ø§Ù„ÙÙŠÙ„', 'Ø§Ù„Ø­ÙˆØª Ø§Ù„Ø£Ø²Ø±Ù‚', 'Ø§Ù„Ø²Ø±Ø§ÙØ©', 'ÙˆØ­ÙŠØ¯ Ø§Ù„Ù‚Ø±Ù†'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø¯ÙˆÙ„Ø© ØªÙØ¹Ø±Ù Ø¨Ø£Ø±Ø¶ Ø§Ù„Ø±Ø§ÙØ¯ÙŠÙ†ØŸ',
+      options: ['Ù…ØµØ±', 'Ø§Ù„Ø¹Ø±Ø§Ù‚', 'Ø³ÙˆØ±ÙŠØ§', 'Ø§Ù„Ø£Ø±Ø¯Ù†'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø¹Ø§ØµÙ…Ø© ÙØ±Ù†Ø³Ø§ØŸ',
+      options: ['Ø±ÙˆÙ…Ø§', 'Ù…Ø¯Ø±ÙŠØ¯', 'Ø¨Ø§Ø±ÙŠØ³', 'Ù„Ù†Ø¯Ù†'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø¹Ø§ØµÙ…Ø© Ø§Ù„ÙŠØ§Ø¨Ø§Ù†ØŸ',
+      options: ['Ø¨ÙƒÙŠÙ†', 'Ø·ÙˆÙƒÙŠÙˆ', 'Ø³ÙŠÙˆÙ„', 'Ø¨Ø§Ù†ÙƒÙˆÙƒ'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ ÙƒÙˆÙƒØ¨ Ù„Ø¯ÙŠÙ‡ Ø­Ù„Ù‚Ø§Øª ÙˆØ§Ø¶Ø­Ø© ÙˆÙ…Ø´Ù‡ÙˆØ±Ø©ØŸ',
+      options: ['Ø¹Ø·Ø§Ø±Ø¯', 'Ø²Ø­Ù„', 'Ø§Ù„Ø£Ø±Ø¶', 'Ø§Ù„Ù…Ø±ÙŠØ®'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø¯Ù‚ÙŠÙ‚Ø© ÙÙŠ Ø§Ù„Ø³Ø§Ø¹Ø© Ø§Ù„ÙˆØ§Ø­Ø¯Ø©ØŸ',
+      options: ['30', '45', '60', '90'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø«Ø§Ù†ÙŠØ© ÙÙŠ Ø§Ù„Ø¯Ù‚ÙŠÙ‚Ø© Ø§Ù„ÙˆØ§Ø­Ø¯Ø©ØŸ',
+      options: ['30', '45', '60', '100'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ù…Ø¹Ø¯Ù† ÙŠØ±Ù…Ø² Ù„Ù‡ Ø¨Ø§Ù„Ø±Ù…Ø² AuØŸ',
+      options: ['Ø§Ù„ÙØ¶Ø©', 'Ø§Ù„Ø°Ù‡Ø¨', 'Ø§Ù„Ø­Ø¯ÙŠØ¯', 'Ø§Ù„Ù†Ø­Ø§Ø³'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ù„Ø¹Ø¶Ùˆ Ø§Ù„Ø°ÙŠ ÙŠØ¶Ø® Ø§Ù„Ø¯Ù… ÙÙŠ Ø¬Ø³Ù… Ø§Ù„Ø¥Ù†Ø³Ø§Ù†ØŸ',
+      options: ['Ø§Ù„Ø±Ø¦Ø©', 'Ø§Ù„Ù…Ø¹Ø¯Ø©', 'Ø§Ù„Ù‚Ù„Ø¨', 'Ø§Ù„ÙƒØ¨Ø¯'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø¹Ø¯Ø¯ Ù‚Ø§Ø±Ø§Øª Ø§Ù„Ø¹Ø§Ù„Ù…ØŸ',
+      options: ['5', '6', '7', '8'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ù…Ù† Ø§Ù„Ø¢ØªÙŠ Ù„ÙŠØ³ Ù…Ù† Ø§Ù„ÙƒÙˆØ§ÙƒØ¨ØŸ',
+      options: ['Ø§Ù„Ø£Ø±Ø¶', 'Ø§Ù„Ù…Ø±ÙŠØ®', 'Ø§Ù„Ù‚Ù…Ø±', 'Ø²Ø­Ù„'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ø³Ù… ØµÙˆØª Ø§Ù„Ø£Ø³Ø¯ØŸ',
+      options: ['Ù†Ù‡ÙŠÙ‚', 'Ø²Ø¦ÙŠØ±', 'ØµÙ‡ÙŠÙ„', 'Ù…ÙˆØ§Ø¡'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø­ÙŠÙˆØ§Ù† ÙŠÙØ¹Ø±Ù Ø¨Ø£Ù†Ù‡ Ù…Ù„Ùƒ Ø§Ù„ØºØ§Ø¨Ø©ØŸ',
+      options: ['Ø§Ù„Ø£Ø³Ø¯', 'Ø§Ù„ÙÙŠÙ„', 'Ø§Ù„Ù†Ù…Ø±', 'Ø§Ù„Ø°Ø¦Ø¨'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ù„ÙˆÙ† Ø§Ù„Ø²Ù…Ø±Ø¯ Ø§Ù„Ù…Ø´Ù‡ÙˆØ±ØŸ',
+      options: ['Ø£Ø­Ù…Ø±', 'Ø£Ø®Ø¶Ø±', 'Ø£Ø²Ø±Ù‚', 'Ø£ØµÙØ±'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø¨Ø­Ø± ÙŠÙØµÙ„ Ø¨ÙŠÙ† Ø´Ø¨Ù‡ Ø§Ù„Ø¬Ø²ÙŠØ±Ø© Ø§Ù„Ø¹Ø±Ø¨ÙŠØ© ÙˆØ£ÙØ±ÙŠÙ‚ÙŠØ§ØŸ',
+      options: ['Ø§Ù„Ø¨Ø­Ø± Ø§Ù„Ø£Ø­Ù…Ø±', 'Ø§Ù„Ø¨Ø­Ø± Ø§Ù„Ø£Ø³ÙˆØ¯', 'Ø¨Ø­Ø± Ø§Ù„Ø¹Ø±Ø¨', 'Ø¨Ø­Ø± Ù‚Ø²ÙˆÙŠÙ†'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø£ÙƒØ¨Ø± Ø¯ÙˆÙ„Ø© Ø¹Ø±Ø¨ÙŠØ© Ù…Ù† Ø­ÙŠØ« Ø§Ù„Ù…Ø³Ø§Ø­Ø©ØŸ',
+      options: ['Ø§Ù„Ø¹Ø±Ø§Ù‚', 'Ø§Ù„Ø³Ø¹ÙˆØ¯ÙŠØ©', 'Ù…ØµØ±', 'Ø§Ù„Ø¬Ø²Ø§Ø¦Ø±'],
+      correctAnswer: 3,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ù„Ù„ØºØ© Ø§Ù„Ø£ÙƒØ«Ø± Ø§Ø³ØªØ®Ø¯Ø§Ù…Ø§Ù‹ ÙÙŠ Ø§Ù„Ø¨Ø±Ø§Ø²ÙŠÙ„ØŸ',
+      options: ['Ø§Ù„Ø¥Ø³Ø¨Ø§Ù†ÙŠØ©', 'Ø§Ù„Ø¨Ø±ØªØºØ§Ù„ÙŠØ©', 'Ø§Ù„Ø¥Ù†ÙƒÙ„ÙŠØ²ÙŠØ©', 'Ø§Ù„ÙØ±Ù†Ø³ÙŠØ©'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø¶Ù„Ø¹Ø§Ù‹ Ù„Ù„Ù…Ø«Ù…Ù†ØŸ',
+      options: ['6', '7', '8', '9'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø£Ù‚Ø±Ø¨ Ù†Ø¬Ù… Ø¥Ù„Ù‰ Ø§Ù„Ø£Ø±Ø¶ØŸ',
+      options: ['Ø§Ù„Ù‚Ù…Ø±', 'Ø§Ù„Ø´Ù…Ø³', 'Ø§Ù„Ù…Ø±ÙŠØ®', 'Ù†Ø¬Ù… Ø§Ù„Ù‚Ø·Ø¨'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø­Ø§Ø³Ø© ØªØ³Ø§Ø¹Ø¯Ù†Ø§ Ø¹Ù„Ù‰ ØªÙ…ÙŠÙŠØ² Ø§Ù„Ø£Ù„ÙˆØ§Ù†ØŸ',
+      options: ['Ø§Ù„Ø´Ù…', 'Ø§Ù„Ø³Ù…Ø¹', 'Ø§Ù„Ø¨ØµØ±', 'Ø§Ù„ØªØ°ÙˆÙ‚'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ø³Ù… Ø§Ù„Ø¹Ù…Ù„ÙŠØ© Ø§Ù„ØªÙŠ ÙŠØµÙ†Ø¹ Ø¨Ù‡Ø§ Ø§Ù„Ù†Ø¨Ø§Øª ØºØ°Ø§Ø¡Ù‡ØŸ',
+      options: ['Ø§Ù„ØªÙ†ÙØ³', 'Ø§Ù„Ø¨Ù†Ø§Ø¡ Ø§Ù„Ø¶ÙˆØ¦ÙŠ', 'Ø§Ù„Ù‡Ø¶Ù…', 'Ø§Ù„ØªØ¨Ø®Ø±'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ù…Ù† Ø§Ù„Ø¢ØªÙŠ Ù…ØµØ¯Ø± Ø·Ø§Ù‚Ø© Ù…ØªØ¬Ø¯Ø¯ØŸ',
+      options: ['Ø§Ù„ÙØ­Ù…', 'Ø§Ù„Ù†ÙØ·', 'Ø§Ù„Ø·Ø§Ù‚Ø© Ø§Ù„Ø´Ù…Ø³ÙŠØ©', 'Ø§Ù„ØºØ§Ø² Ø§Ù„Ø·Ø¨ÙŠØ¹ÙŠ'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ø³Ù… Ø§Ù„Ø¬Ù‡Ø§Ø² Ø§Ù„Ø°ÙŠ ÙŠÙ‚ÙŠØ³ Ø¯Ø±Ø¬Ø© Ø§Ù„Ø­Ø±Ø§Ø±Ø©ØŸ',
+      options: ['Ø§Ù„Ù…ÙŠØ²Ø§Ù†', 'Ø§Ù„Ø¨Ø§Ø±ÙˆÙ…ØªØ±', 'Ø§Ù„ØªØ±Ù…ÙˆÙ…ØªØ±', 'Ø§Ù„Ø¨ÙˆØµÙ„Ø©'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø¹Ø§ØµÙ…Ø© Ø¥ÙŠØ·Ø§Ù„ÙŠØ§ØŸ',
+      options: ['Ø±ÙˆÙ…Ø§', 'Ù…ÙŠÙ„Ø§Ù†Ùˆ', 'Ù†Ø§Ø¨ÙˆÙ„ÙŠ', 'ØªÙˆØ±ÙŠÙ†Ùˆ'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø¯ÙˆÙ„Ø© ØªØ´ØªÙ‡Ø± Ø¨Ø§Ù„Ø£Ù‡Ø±Ø§Ù…Ø§Øª Ø§Ù„Ù‚Ø¯ÙŠÙ…Ø© ÙÙŠ Ø§Ù„Ø¬ÙŠØ²Ø©ØŸ',
+      options: ['Ø§Ù„Ø¹Ø±Ø§Ù‚', 'Ù…ØµØ±', 'Ø§Ù„ÙŠÙ…Ù†', 'Ø§Ù„Ù…ØºØ±Ø¨'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ù„Ø­ÙŠÙˆØ§Ù† Ø§Ù„Ø°ÙŠ ÙŠØ¹ÙŠØ´ ÙÙŠ Ø§Ù„Ù…Ø§Ø¡ ÙˆÙŠØªÙ†ÙØ³ Ø¨ÙˆØ§Ø³Ø·Ø© Ø§Ù„Ø®ÙŠØ§Ø´ÙŠÙ…ØŸ',
+      options: ['Ø§Ù„Ø³Ù…Ùƒ', 'Ø§Ù„Ù‚Ø·Ø©', 'Ø§Ù„Ø­ØµØ§Ù†', 'Ø§Ù„Ø¯Ø¬Ø§Ø¬Ø©'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø´Ù‡Ø± ÙŠØ£ØªÙŠ Ø¨Ø¹Ø¯ Ø´Ù‡Ø± Ø±Ù…Ø¶Ø§Ù† ÙÙŠ Ø§Ù„ØªÙ‚ÙˆÙŠÙ… Ø§Ù„Ù‡Ø¬Ø±ÙŠØŸ',
+      options: ['Ø´ÙˆØ§Ù„', 'Ø±Ø¬Ø¨', 'Ù…Ø­Ø±Ù…', 'Ø´Ø¹Ø¨Ø§Ù†'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ø³Ù… ØµÙˆØª Ø§Ù„ÙƒÙ„Ø¨ØŸ',
+      options: ['Ù…ÙˆØ§Ø¡', 'Ù†Ø¨Ø§Ø­', 'Ø²Ø¦ÙŠØ±', 'ØµÙ‡ÙŠÙ„'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ Ø¢Ù„Ø© Ù†Ø³ØªØ®Ø¯Ù…Ù‡Ø§ Ù„Ù…Ø¹Ø±ÙØ© Ø§Ù„Ø§ØªØ¬Ø§Ù‡Ø§ØªØŸ',
+      options: ['Ø§Ù„Ø¨ÙˆØµÙ„Ø©', 'Ø§Ù„Ù…Ø³Ø·Ø±Ø©', 'Ø§Ù„Ø³Ø§Ø¹Ø©', 'Ø§Ù„Ù…Ø¬Ù‡Ø±'],
+      correctAnswer: 0,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø´Ù‡Ø±Ø§Ù‹ ÙÙŠ Ø§Ù„Ø³Ù†Ø© Ø§Ù„Ù…ÙŠÙ„Ø§Ø¯ÙŠØ©ØŸ',
+      options: ['10', '11', '12', '13'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø¹ÙƒØ³ ÙƒÙ„Ù…Ø© "Ù‚Ø¯ÙŠÙ…"ØŸ',
+      options: ['ØµØºÙŠØ±', 'Ø¬Ø¯ÙŠØ¯', 'Ø¨Ø¹ÙŠØ¯', 'Ù‚Ø±ÙŠØ¨'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ù†Ø§ØªØ¬ 9 Ã— 5ØŸ',
+      options: ['35', '40', '45', '50'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ù†Ø§ØªØ¬ 72 Ã· 8ØŸ',
+      options: ['7', '8', '9', '10'],
+      correctAnswer: 2,
+    ),
+
+    // Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø¹Ø§Ù…Ø© Ù…Ù†Ø§Ø³Ø¨Ø© Ù„Ù„Ø·Ù„Ø§Ø¨
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø¹Ø¯Ø¯ Ø£ÙŠØ§Ù… Ø§Ù„Ø£Ø³Ø¨ÙˆØ¹ØŸ',
+      options: ['5', '6', '7', '8'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø¹Ø¯Ø¯ Ø£Ø´Ù‡Ø± Ø§Ù„Ø³Ù†Ø©ØŸ',
+      options: ['10', '11', '12', '13'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø§Ù„ÙƒÙˆÙƒØ¨ Ø§Ù„Ø°ÙŠ Ù†Ø¹ÙŠØ´ Ø¹Ù„ÙŠÙ‡ØŸ',
+      options: ['Ø§Ù„Ù…Ø±ÙŠØ®', 'Ø§Ù„Ø£Ø±Ø¶', 'Ø§Ù„Ù‚Ù…Ø±', 'Ø§Ù„Ù…Ø´ØªØ±ÙŠ'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'Ù…Ø§ Ø¹Ø§ØµÙ…Ø© Ø§Ù„Ø¹Ø±Ø§Ù‚ØŸ',
+      options: ['Ø§Ù„Ø¨ØµØ±Ø©', 'Ø¨ØºØ¯Ø§Ø¯', 'Ø§Ù„Ù…ÙˆØµÙ„', 'Ø£Ø±Ø¨ÙŠÙ„'],
+      correctAnswer: 1,
+    ),
+    QuizQuestion(
+      question: 'ÙƒÙ… Ø¹Ø¯Ø¯ Ø§Ù„ÙØµÙˆÙ„ ÙÙŠ Ø§Ù„Ø³Ù†Ø©ØŸ',
+      options: ['2', '3', '4', '5'],
+      correctAnswer: 2,
+    ),
+    QuizQuestion(
+      question: 'Ø£ÙŠ ÙˆØ³ÙŠÙ„Ø© Ù†Ø³ØªØ®Ø¯Ù…Ù‡Ø§ Ù„Ù„Ø§ØªØµØ§Ù„ØŸ',
+      options: ['Ø§Ù„Ù‡Ø§ØªÙ', 'Ø§Ù„Ù…Ù„Ø¹Ù‚Ø©', 'Ø§Ù„ÙƒØ±Ø³ÙŠ', 'Ø§Ù„ÙƒØªØ§Ø¨'],
+      correctAnswer: 0,
+    ),
+  ];
+
+  int currentQuestion = 0;
+  int score = 0;
+  int? selectedAnswer;
+  bool answered = false;
+
+  void selectAnswer(int index) {
+    if (answered) return;
+
+    setState(() {
+      selectedAnswer = index;
+      answered = true;
+
+      if (index == questions[currentQuestion].correctAnswer) {
+        score++;
+      }
+    });
+  }
+
+  void nextQuestion() {
+    if (currentQuestion < questions.length - 1) {
+      setState(() {
+        currentQuestion++;
+        selectedAnswer = null;
+        answered = false;
+      });
+    } else {
+      _showResult();
+    }
+  }
+
+  void _restartQuiz() {
+    setState(() {
+      currentQuestion = 0;
+      score = 0;
+      selectedAnswer = null;
+      answered = false;
+    });
+  }
+
+  void _showResult() {
+    final percent = ((score / questions.length) * 100).round();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text(
+            'ðŸŽ‰ Ø§Ù†ØªÙ‡Ù‰ Ø§Ù„Ø§Ø®ØªØ¨Ø§Ø±',
+            textAlign: TextAlign.center,
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Ù†ØªÙŠØ¬ØªÙƒ'),
+              const SizedBox(height: 10),
+              Text(
+                '$score / ${questions.length}',
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text('$percent / 100'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                Navigator.pop(context);
+              },
+              child: const Text('Ø¥Ù†Ù‡Ø§Ø¡'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _restartQuiz();
+              },
+              child: const Text('Ø¥Ø¹Ø§Ø¯Ø© Ø§Ù„Ø§Ø®ØªØ¨Ø§Ø±'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final question = questions[currentQuestion];
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'Ø§Ø®ØªØ¨Ø± Ù†ÙØ³Ùƒ',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(18),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3E8FF),
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'Ø§Ù„Ø³Ø¤Ø§Ù„ ${currentQuestion + 1} Ù…Ù† ${questions.length}',
+                    style: const TextStyle(
+                      color: Color(0xFF7C3AED),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  LinearProgressIndicator(
+                    value: (currentQuestion + 1) / questions.length,
+                    minHeight: 7,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  question.question,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.bold,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            ...List.generate(
+              question.options.length,
+                  (index) {
+                final isSelected = selectedAnswer == index;
+                final isCorrect = index == question.correctAnswer;
+
+                Color? background;
+                IconData? icon;
+
+                if (answered && isCorrect) {
+                  background = const Color(0xFFD1FAE5);
+                  icon = Icons.check_circle;
+                } else if (answered && isSelected) {
+                  background = const Color(0xFFFEE2E2);
+                  icon = Icons.cancel;
+                }
+
+                return Card(
+                  color: background,
+                  elevation: 0,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: const BorderSide(color: Color(0xFFE2E8F0)),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
+                    leading: CircleAvatar(
+                      child: Text(
+                        String.fromCharCode(65 + index),
+                      ),
+                    ),
+                    title: Text(
+                      question.options[index],
+                      style: const TextStyle(fontSize: 17),
+                    ),
+                    trailing: icon == null
+                        ? null
+                        : Icon(icon),
+                    onTap: answered
+                        ? null
+                        : () => selectAnswer(index),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            if (answered)
+              FilledButton.icon(
+                onPressed: nextQuestion,
+                icon: Icon(
+                  currentQuestion == questions.length - 1
+                      ? Icons.emoji_events
+                      : Icons.arrow_back,
+                ),
+                label: Text(
+                  currentQuestion == questions.length - 1
+                      ? 'Ø¹Ø±Ø¶ Ø§Ù„Ù†ØªÙŠØ¬Ø©'
+                      : 'Ø§Ù„Ø³Ø¤Ø§Ù„ Ø§Ù„ØªØ§Ù„ÙŠ',
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+

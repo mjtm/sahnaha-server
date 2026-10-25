@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "docx": "^9.8.1",
+    "formidable": "^3.5.4",
+    "mammoth": "^1.13.0",
+    "multer": "^2.4.0"
+  }
+}
