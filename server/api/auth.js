@@ -411,7 +411,7 @@ app.post('/api/auth/update-profile', async (req, res) => {
     )) {
       return json(res, 401, {
         success: false,
-        error: '╪º┘ä╪▒┘à╪▓ ╪º┘ä╪¡╪º┘ä┘è ╪║┘è╪▒ ╪╡╪¡┘è╪¡',
+        error: ''الرمز الحالي غير صحيح'',
       });
     }
 
