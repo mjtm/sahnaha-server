@@ -332,7 +332,7 @@ app.post('/api/auth/login', async (req, res) => {
         )) {
       return json(res, 401, {
         success: false,
-        error: '╪º┘ä╪Ñ┘è┘à┘è┘ä ╪ú┘ê ╪º┘ä╪▒┘à╪▓ ╪║┘è╪▒ ╪╡╪¡┘è╪¡',
+        error: 'الإيميل أو الرمز غير صحيح',
       });
     }
 
